@@ -1,6 +1,7 @@
 # Shadow the BIG files
 results/
-data/
+data/SRRs
+data/trimmed_fastqs
 
 # Shadow vscode files
 *.vscode/

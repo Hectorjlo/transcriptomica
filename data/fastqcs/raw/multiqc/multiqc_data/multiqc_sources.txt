@@ -1,0 +1,15 @@
+Module	Section	Sample Name	Source
+FastQC	all_sections	SRR9126859_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9126859_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9126859_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9126859_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9126934_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9126934_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9126934_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9126934_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127063_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127063_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127063_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127063_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127293_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127293_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127293_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127293_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127308_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127308_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127308_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127308_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127357_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127357_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127357_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127357_2_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127396_1	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127396_1_fastqc/fastqc_data.txt
+FastQC	all_sections	SRR9127396_2	/export/space3/users/hectorjl/4to/transcriptomica/data/fastqcs/zipped/SRR9127396_2_fastqc/fastqc_data.txt

@@ -1,0 +1,10 @@
+PASS	Basic Statistics	SRR9127396_2.fastq
+PASS	Per base sequence quality	SRR9127396_2.fastq
+PASS	Per sequence quality scores	SRR9127396_2.fastq
+FAIL	Per base sequence content	SRR9127396_2.fastq
+FAIL	Per sequence GC content	SRR9127396_2.fastq
+PASS	Per base N content	SRR9127396_2.fastq
+PASS	Sequence Length Distribution	SRR9127396_2.fastq
+FAIL	Sequence Duplication Levels	SRR9127396_2.fastq
+PASS	Overrepresented sequences	SRR9127396_2.fastq
+PASS	Adapter Content	SRR9127396_2.fastq

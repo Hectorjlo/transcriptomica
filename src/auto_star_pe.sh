@@ -28,8 +28,8 @@ export -f run_star
 
 out_dir="${2%/}/"
 for (( i=0; i<${#files[@]}; i+=2 )); do
-    core_name="${files[$i]##*/}"
-    core_name="${core_name#clean_}"
-    core_name="${core_name%_1.fastq}"
-    echo "${files[$i]} ${files[$i+1]} ${out_dir}output_${core_name}_pe_ ${out_dir}summary_of_${core_name}_pe.txt"
+core_name="${files[$i]##*/}"
+core_name="${core_name#clean_}"
+core_name="${core_name%_1.fastq}"
+echo "${files[$i]} ${files[$i+1]} ${out_dir}output_${core_name}_pe_ ${out_dir}summary_of_${core_name}_pe.txt"
 done | parallel -j ${n_files} --colsep ' ' run_star
