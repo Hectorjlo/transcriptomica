@@ -1,0 +1,6 @@
+# Shadow the BIG files
+results/
+data/
+
+# Shadow vscode files
+*.vscode/
