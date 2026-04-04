@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 # Runs STAR paired_end in parallel for each read, hardcoded code.
+# This script expects two arguments, one that is the path in which the
+# files will be search on and the second where output files will be generated
+# Usage:
+#   ./auto_star_pe.sh <input_dir> <output_dir>
+#   ./auto_star_pe.sh ../data/trimmed_fastqs ../results/star/paired_end
 
 # Same principle as `auto_fastp.sh` and `auto_hisat2.sh` and `auto_hisat2_pe.sh` and `auto_star_single.sh`
 # Create an array of the names that match: clean_*.fastq

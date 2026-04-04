@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 # Runs hisat2 paired_end in parallel for each read, harcoded code.
+# This script expects two arguments, one that is the path in which the
+# files will be search on and the second where output files will be generated
+# Usage:
+#   ./auto_hisat2_pe.sh <input_dir> <output_dir>
+#   ./auto_hisat2_pe.sh ../data/trimmed_fastqs ../results/hisat2/paired_end
 
 # Same principle as `auto_hisat2.sh`
 # Create an array of the names that match: clean_*.fastq
