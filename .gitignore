@@ -5,3 +5,11 @@ data/trimmed_fastqs
 
 # Shadow vscode files
 *.vscode/
+
+# Shadow rust files
+src/stats/target/*
+# Not shadow the release
+!src/stats/target/release
+src/stats/target/release/*
+!src/stats/target/release/stats
+
