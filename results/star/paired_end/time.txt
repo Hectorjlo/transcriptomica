@@ -1,0 +1,1 @@
+../../../src/auto_star_pe.sh ../../../data/trimmed_fastqs/ ./  38721.16s user 771.46s system 600% cpu 1:49:33.62 total

@@ -1,0 +1,1 @@
+./auto_hisat2.sh ../data/trimmed_fastqs ../results/hisat2/single_end 22276.17s user 746.24s system 390% cpu 1:38:09.64 total

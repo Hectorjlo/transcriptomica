@@ -1,5 +1,5 @@
 # Shadow the BIG files
-results/
+*sam
 data/SRRs
 data/trimmed_fastqs
 

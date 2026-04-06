@@ -1,0 +1,140 @@
+>ASSEMBLER: HISAT2 READ: SRR9126859 (PE)
+  Overall alignment: 66.68%
+	Non aligned: 33.32%
+	Aligned only once: 57.81%
+	Aligned >1 times: 8.87%
+>ASSEMBLER: HISAT2 READ: SRR9126934 (PE)
+  Overall alignment: 68.67%
+	Non aligned: 31.33%
+	Aligned only once: 62.01%
+	Aligned >1 times: 6.66%
+>ASSEMBLER: HISAT2 READ: SRR9127063 (PE)
+  Overall alignment: 77.47%
+	Non aligned: 22.53%
+	Aligned only once: 67.51%
+	Aligned >1 times: 9.96%
+>ASSEMBLER: HISAT2 READ: SRR9127293 (PE)
+  Overall alignment: 72.96%
+	Non aligned: 27.04%
+	Aligned only once: 66.76%
+	Aligned >1 times: 6.20%
+>ASSEMBLER: HISAT2 READ: SRR9127308 (PE)
+  Overall alignment: 72.31%
+	Non aligned: 27.69%
+	Aligned only once: 66.67%
+	Aligned >1 times: 5.64%
+>ASSEMBLER: HISAT2 READ: SRR9127357 (PE)
+  Overall alignment: 65.35%
+	Non aligned: 34.65%
+	Aligned only once: 47.89%
+	Aligned >1 times: 17.46%
+>ASSEMBLER: HISAT2 READ: SRR9127396 (PE)
+  Overall alignment: 77.48%
+	Non aligned: 22.52%
+	Aligned only once: 69.90%
+	Aligned >1 times: 7.58%
+>ASSEMBLER: HISAT2 READ: SRR9126859 (SE)
+  Overall alignment: 84.23%
+	Non aligned: 15.77%
+	Aligned only once: 68.08%
+	Aligned >1 times: 16.15%
+>ASSEMBLER: HISAT2 READ: SRR9126934 (SE)
+  Overall alignment: 83.52%
+	Non aligned: 16.48%
+	Aligned only once: 68.87%
+	Aligned >1 times: 14.65%
+>ASSEMBLER: HISAT2 READ: SRR9127063 (SE)
+  Overall alignment: 90.65%
+	Non aligned: 9.35%
+	Aligned only once: 73.89%
+	Aligned >1 times: 16.76%
+>ASSEMBLER: HISAT2 READ: SRR9127293 (SE)
+  Overall alignment: 87.58%
+	Non aligned: 12.42%
+	Aligned only once: 73.70%
+	Aligned >1 times: 13.88%
+>ASSEMBLER: HISAT2 READ: SRR9127308 (SE)
+  Overall alignment: 86.33%
+	Non aligned: 13.67%
+	Aligned only once: 73.39%
+	Aligned >1 times: 12.94%
+>ASSEMBLER: HISAT2 READ: SRR9127357 (SE)
+  Overall alignment: 85.72%
+	Non aligned: 14.28%
+	Aligned only once: 58.26%
+	Aligned >1 times: 27.46%
+>ASSEMBLER: HISAT2 READ: SRR9127396 (SE)
+  Overall alignment: 90.08%
+	Non aligned: 9.92%
+	Aligned only once: 75.90%
+	Aligned >1 times: 14.18%
+>ASSEMBLER: STAR READ: SRR9126859 (PE)
+  Overall alignment: 79.52%
+	Non aligned: 20.48%
+	Aligned only once: 65.77%
+	Aligned >1 times: 13.75%
+>ASSEMBLER: STAR READ: SRR9126934 (PE)
+  Overall alignment: 79.46%
+	Non aligned: 20.54%
+	Aligned only once: 70.32%
+	Aligned >1 times: 9.14%
+>ASSEMBLER: STAR READ: SRR9127063 (PE)
+  Overall alignment: 90.39%
+	Non aligned: 9.61%
+	Aligned only once: 74.78%
+	Aligned >1 times: 15.61%
+>ASSEMBLER: STAR READ: SRR9127293 (PE)
+  Overall alignment: 83.64%
+	Non aligned: 16.36%
+	Aligned only once: 74.84%
+	Aligned >1 times: 8.80%
+>ASSEMBLER: STAR READ: SRR9127308 (PE)
+  Overall alignment: 81.83%
+	Non aligned: 18.17%
+	Aligned only once: 74.49%
+	Aligned >1 times: 7.34%
+>ASSEMBLER: STAR READ: SRR9127357 (PE)
+  Overall alignment: 89.71%
+	Non aligned: 10.29%
+	Aligned only once: 58.71%
+	Aligned >1 times: 31.00%
+>ASSEMBLER: STAR READ: SRR9127396 (PE)
+  Overall alignment: 87.94%
+	Non aligned: 12.06%
+	Aligned only once: 76.99%
+	Aligned >1 times: 10.95%
+>ASSEMBLER: STAR READ: SRR9126859 (SE)
+  Overall alignment: 91.80%
+	Non aligned: 8.20%
+	Aligned only once: 71.47%
+	Aligned >1 times: 20.33%
+>ASSEMBLER: STAR READ: SRR9126934 (SE)
+  Overall alignment: 91.60%
+	Non aligned: 8.40%
+	Aligned only once: 74.26%
+	Aligned >1 times: 17.34%
+>ASSEMBLER: STAR READ: SRR9127063 (SE)
+  Overall alignment: 95.91%
+	Non aligned: 4.09%
+	Aligned only once: 75.59%
+	Aligned >1 times: 20.32%
+>ASSEMBLER: STAR READ: SRR9127293 (SE)
+  Overall alignment: 94.57%
+	Non aligned: 5.43%
+	Aligned only once: 78.07%
+	Aligned >1 times: 16.50%
+>ASSEMBLER: STAR READ: SRR9127308 (SE)
+  Overall alignment: 93.68%
+	Non aligned: 6.32%
+	Aligned only once: 78.49%
+	Aligned >1 times: 15.19%
+>ASSEMBLER: STAR READ: SRR9127357 (SE)
+  Overall alignment: 95.34%
+	Non aligned: 4.66%
+	Aligned only once: 58.12%
+	Aligned >1 times: 37.22%
+>ASSEMBLER: STAR READ: SRR9127396 (SE)
+  Overall alignment: 94.74%
+	Non aligned: 5.26%
+	Aligned only once: 78.56%
+	Aligned >1 times: 16.18%

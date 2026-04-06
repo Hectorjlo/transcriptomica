@@ -1,0 +1,1 @@
+../../../src/auto_star_single.sh ../../../data/trimmed_fastqs/ ./  13877.86s user 752.30s system 691% cpu 35:14.76 total

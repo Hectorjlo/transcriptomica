@@ -1,0 +1,1 @@
+./auto_hisat2_pe.sh ../data/trimmed_fastqs ../results/hisat2/paired_end 136629.76s user 3066.03s system 253% cpu 15:17:25.86 total
