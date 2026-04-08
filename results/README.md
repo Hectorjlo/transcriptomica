@@ -7,6 +7,8 @@ El presente documento resume el pipeline llevado a cabo hasta el alineamiento co
 * **Edades comparativas:** 3 vs 24 meses
 * **Sexo:** Macho
 
+Directorio del proyecto en el servidor chaac.lcg.unam.mx bajo la ruta: /export/space3/users/hectorjl/4to/transcriptomica
+
 ## 2. Datos y Selección
 Los metadatos fueron descargados de NCBI GEO. Utilizando un script de filtrado en Python (*ver Apéndice A.1*), se procesaron los datos para mantener únicamente las muestras que cumplieran los criterios fisiológicos requeridos, con un total de 7 accesiones SRRs: SRR9127063, SRR9127357, SRR9127308, SRR9127396, SRR9126859, SRR9127293, y SRR9126934.
 
