@@ -1,5 +1,7 @@
 # Shadow the BIG files
-*sam
+*.sam
+*.bam
+*.salmon
 data/SRRs
 data/trimmed_fastqs
 

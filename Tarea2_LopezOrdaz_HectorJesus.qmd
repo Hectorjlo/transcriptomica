@@ -1,0 +1,704 @@
+---
+title: "Tarea 2"
+subtitle: "Pseudoalineamiento y procesamiento de datos"
+author: "Héctor Jesús López-Ordaz"
+date: "2026-04-15"
+lang: es
+
+format:
+  pdf:
+    highlight-style: breezedark
+    pdf-engine: xelatex
+    toc: true
+    mainfont: "Times New Roman"
+    fontsize: 11pt
+    include-in-header:
+      text: |
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\footnotesize}
+---
+# Planteamiento
+
+El pseudoalineamiento representa un cambio de paradigma en el análisis de datos de secuenciación masiva, desplazando el enfoque del alineamiento base a base tradicional hacia una cuantificación más eficiente y rápida de transcritos. En este trabajo, se exploró el uso de herramientas de cuantificación que no requieren conocer el sitio exacto de unión de las lecturas, sino únicamente identificar a qué transcrito pertenecen. Siguiendo esta metodología se utilizó   **Salmon** como pseudoalineador, con el fin de optimizar el procesamiento de datos transcriptómicos.
+
+El primer análisis se centró en la gestión y transformación de archivos de alineamiento, transitando de formatos `SAM` a `BAM` mediante las herramientas provistas por `samtools`, lo que permitió realizar filtrados por calidad de mapeo (MAPQ > 10) y el ordenamiento de lecturas necesario para la generación de **pileups**. El segundo análisis correspondió a la cuantificación de la expresión génica mediante *featureCounts* de `STAR` y `HISAT2`.
+
+# Objetivos
+
+## Objetivo general
+Evaluar la eficiencia y precisión de los métodos de alineamiento tradicional frente a las estrategias de pseudoalineamiento, comparando herramientas como `HISAT2`, `STAR` y `Salmon`, para determinar su impacto en la cuantificación de la expresión génica y el tiempo de recursos computacionales en análisis transcriptómicos.
+
+## Objetivos específicos
+- Procesar y optimizar archivos de alineamiento en formato `SAM/BAM` mediante herramientas de filtrado y ordenamiento, con el fin de generar archivos de *pileup* (*BigWig*) que permitan la visualización genómica de las lecturas.
+- Cuantificar la expresión génica utilizando *featureCounts*, aplicando distintos criterios de intersección para evaluar cómo la asignación de lecturas influye en el conteo final por gen.
+- Implementar el flujo de trabajo de pseudoalineamiento con `Salmon` en muestras *single-end* y *paired-end*, analizando la asignación probabilística de lecturas hacia los transcritos de referencia.
+- Comparar las métricas de desempeño entre el alineamiento convencional y el pseudoalineamiento, integrando el uso de *tximport* para la conversión de abundancias de transcritos a niveles de expresión génica, optimizando así la transición hacia el análisis de expresión diferencial.
+
+# Metodología
+
+## 1. Creación de la estructura
+Para mantener la estructura ordenada de archivos que se ha llevado hasta el momento, se crearon los directorios necesarios para la futura generación y conversión de archivos, asegurando la aplicación de las buenas prácticas.
+Para lograr lo anterior, ejecutamos lo siguiente desde una terminal:
+```bash
+# Sign in into the chaac server by port 25252
+ssh hectorjl@chaac.lcg.unam.mx -p 25252 -o ServerAliveInterval=30 -o ServerAliveCountMax=5 -o ConnectTimeout=30
+
+# Change directory to the working folder
+cd /home/hectorjl/4to/transcriptomica
+# Create the folders for the bam index, the pileup and features counts files
+mkdir results/{hisat2,star}/{pileup,feature_counts}
+# Create individual folders for single and paired feature_counts
+mkdir results/{hisat2,star}/feature_counts/{single_end,paired_end}
+# Create folder for BAM files
+mkdir results/{hisat2,star}/{paired_end,single_end}/bam
+# Create the folders for the pseudoalignments 
+mkdir -p results/salmon/{paired_end,single_end,tximport}
+# Create folders for tximport output
+mkdir results/salmon/tximport/{single_end,paired_end}
+# Create the folder where BED exclude ranges and GFF3 will be saved
+chmod +w data && mkdir data/{exclude_ranges_bed,gencode.vM36}
+```
+## 2. Uso de `samtools`
+Con el uso de la herramienta `samtools` buscaremos convertir los archivos pesados `SAM` en archivos ordenados tipo `BAM`, indexar el resultado, contar las reads alineadas y por último otorgando permisos de escritura a los archivos `SAM` lo eliminaremos y retiramos los permisos de escritura para el numero `BAM` generado, esto es más eficaz y rápido si se crea un script:
+Desde la carpeta: `transcriptomica`
+Usando `vim src/auto_BAMic.sh` se crea el siguiente script:
+```bash
+#!/usr/bin/env bash
+# Before running a check CPU usage, this creates a job using 2 threads
+# per file all at the same time so if 7 files are found it would use
+# 7*2 = 14 threads
+# Executes a auto processing of SAM files to ordered BAM files
+# This script expects two arguments, one that is the path in which the
+# files will be search on and the second where output files will be generated
+# Usage:
+#   ./auto_BAMic.sh <input_dir> <output_dir>
+#   ./auto_BAMic.sh ../results/bam ../results/sam
+
+# Create an array of the names that match: *.sam
+mapfile -t files < <(find "$1" -maxdepth 1 -type f -name "*.sam" | sort)
+# Calculate total file length
+n_files=$(( ${#files[@]} ))
+
+# Hardcoded function
+run_samtools() {
+    # Arguments
+    #   -@: Threads per job
+    #   -b: Output in BAM format
+    #   -S: Input type file auto detect
+    #   -q: Keep alignments with MAPQ >= 10
+    #   -T: Temporal files names (autodeleted when the processing ends)
+    #   -o: Output BAM file path
+    samtools view -@ 2 -bSq 10 "$1"| samtools sort -@ 2 -T "$2" -o "$3"
+
+}
+# Export the function, needed for parallel to use it
+export -f run_samtools
+
+# Take the second argument passed to the main call ($2) and remove a "/" adding at the end a "/"
+out_dir="${2%/}/"
+# For each read_file do ... until i is less than the number of elements in the array "files"
+# starting with i = 0
+for (( i=0; i<${#files[@]}; i+=1 )); do
+# Build the core_name var, it takes the element "i" of the array "files"
+# starting from the front of the string will eliminate all "*" until a "/" is found,
+# then again starting from the front will eliminate all ultil a "SRR" match is found,
+# finally starting from the back of the string will eliminate the ".sam"
+# e.g:
+#   ../../../results/output_SRR9126859_pe_Aligned.out.sam --> SRR9126859_pe_Aligned.out
+core_name="${files[$i]##*/}"
+core_name="SRR${core_name#*SRR}"
+core_name="${core_name%.sam}"
+# The echo will send 3 strings:
+#   1st -> The input file
+#   2nd -> The core name
+#   3rd -> The outfile path
+# These strings are build in the echo
+echo "${files[$i]} ${core_name} ${out_dir}output_${core_name}.bam"
+done | parallel -j ${n_files} --colsep ' ' run_samtools
+```
+Ejecución del script:
+Después de guardar el archivo, se otorgaron permisos de ejecución y fue lanzando mediante el multiplexer `tmux` creando 4 terminales en la sesión (una para cada alineador y cada set de alineamientos):
+```bash
+# Execute permissions to the bash script
+chmod +x src/auto_BAMic.sh
+# Create and attach to a new tmux session named "core"
+tmux new-session -s 'core'
+# While inside the tmux session core:
+# Create 3 more terminals inside the session 
+# with the next keystrokes
+# Press `Ctrl+b` + `%` 
+# Press `Ctrl+b` + `"`
+# Press `Ctrl+b` + `Left arrow` 
+# Press `Ctrl+b` + `"`
+# Press `Ctrl+b` + `Up arrow`
+# This creates a four panel
+# In the first: 
+./src/auto_BAMic.sh results/hisat2/paired_end results/hisat2/paired_end/bam
+# Press `Ctrl+b` + `Down arrow`
+# In the second:
+./src/auto_BAMic.sh results/hisat2/single_end results/hisat2/single_end/bam
+# Press `Ctrl+b` + `Right arrow`
+# In the third:
+./src/auto_BAMic.sh results/star/single_end results/star/single_end/bam
+# Press `Ctrl+b` + `Up arrow`
+# In the fourth:
+./src/auto_BAMic.sh results/star/paired_end/ results/star/paired_end/bam
+# Press `Ctrl+b` + `d`
+# Sign out of the tmux session
+```
+Al finalizar indexamos todos los bam creados:
+```bash
+# With the -M flag it allows multiple indexes to be processed at once
+# Using brace expansion is a powerful tool
+samtools index -M -@ 25 results/{hisat2,star}/{paired_end,single_end}/bam/*.bam
+```
+De esta manera se crea el archivo indexado `BAI` para cada archivo `BAM` previamente generado y en el mismo path.
+Además de contar las reads alineadas totales:
+```bash
+# This small script uses brace expansion and for and if statements
+# in this way single and pair end cases are processed at once
+# It also uses the pattern removal, powerful tool of linux core utils
+# Noteworthy the bash documentation: 
+# https://www.gnu.org/software/bash/manual/bash.html
+for b in results/{hisat2,star}/{single_end,paired_end}/bam/*.bam; do
+	if [[ $b =~ single_end ]]; then
+		samtools view -@ 25 -c "$b" > "${b%/*}/n.align_reads_${b##*/}.txt"
+	elif [[ $b =~ paired_end ]]; then
+		samtools view -@ 25 -f 64 -c "$b" > "${b%/*}/n.align_reads_${b##*/}.txt"
+	fi
+done
+```
+Por último, podemos eliminar los archivos `SAM` originales liberando el gran espacio que usan:
+```bash
+rm results/{hisat2,star}/{single_end,paired_end}/*.sam
+```
+## 3. Generación de los archivos Pileup
+Con el uso de `deeptools` se generarán los archivos Pileup (bigwig) para los alineamientos de  `STAR` y `HISAT2` de lecturas pareadas, esto con el fin de tener la posibilidad de explorarlos de manera más visual a medida de ser necesario.
+Se encontró en: [excluderanges](https://dozmorovlab.github.io/excluderanges/#excluderanges-genomic-ranges-of-problematic-genomic-regions) el archivo `BED` de `mm39.excluderanges` con el fin de evitar coordenadas genómicas conflictivas en análisis genómicos, este archivo fue descargado y guardado en la carpeta: `data/exclude_ranges_bed`.
+Para continuar, con el uso de `vim src/auto_pileup_gen.sh` se crea el siguiente script:
+```bash
+#!/usr/bin/env bash
+
+# Runs bamCoverage for paired_end files of expected star and hisat2 alignments
+# This script expects four arguments
+# Usage:
+#   ./auto_pileup_gen.sh <input_star_dir> <input_hisat_dir> <output_star_dir> <output_hisat_dir>
+#   ./auto_pileup_gen.sh ../data/trimmed_fastqs ../results/star/paired_end
+
+# Create arrays of the names that match: *.bam files
+mapfile -t star_files < <(find "$1" -maxdepth 1 -type f -name "*.bam" | sort) # For Star
+mapfile -t hisat_files < <(find "$2" -maxdepth 1 -type f -name "*.bam" | sort) # For Hisat2
+# Count how many files where found
+n_files_star=$(( ${#star_files[@]} )) # For Star
+n_files_hisat=$(( ${#hisat_files[@]} )) # For Hisat2
+
+# Arguments
+    #   -p 5: use up to 5 threads per bamCoverage process
+    #   -b "$1": input BAM file
+    #   -o "$2": output BigWig (.bw) file
+    #   -bs 20: bin size of 20 bp
+    #   --blackListFileName: ignore genomic regions listed in blacklist BED
+    #   --normalizeUsing BPM: normalize coverage to bins per million mapped reads
+    #   --skipNAs: skip bins with no coverage data
+    #   --ignoreDuplicates: do not count duplicate reads
+    #   --samFlagInclude 64: include first mate reads only in paired-end data
+run_bamcov_star() {
+    bamCoverage -p 5 \
+         -b "$1" \
+         -o "$2" \
+         -bs 20 \
+         --blackListFileName /home/hectorjl/4to/transcriptomica/data/exclude_ranges_bed/mm39.excluderanges.bed \
+         --normalizeUsing BPM \
+         --skipNAs \
+         --ignoreDuplicates \
+         --samFlagInclude 64
+}
+run_bamcov_hisat() {
+    bamCoverage -p 5 \
+         -b "$1" \
+         -o "$2" \
+         -bs 20 \
+         --blackListFileName /home/hectorjl/4to/transcriptomica/data/exclude_ranges_bed/mm39.excluderanges.bed \
+         --normalizeUsing BPM \
+         --skipNAs \
+         --ignoreDuplicates \
+         --samFlagInclude 64
+}
+# Export the function, needed for parallel to use it
+export -f run_bamcov_star
+export -f run_bamcov_hisat
+
+# Gather file output paths
+out_dir_star="${3%/}/" # For Star
+out_dir_hisat="${4%/}/" # For Hisat2
+
+# For STAR:
+# For each read_file do ... until i is less than the number of elements in the array 
+# starting with i = 0, advancing by 1
+for (( i=0; i<${#star_files[@]}; i+=1 )); do
+# Build the core_name var, it takes the element "i" of the array 
+# starting from the front of the string will eliminate all until a "/" is found,
+# then again starting from the front will eliminate the first instance of "output_",
+# finally starting from the back of the string will eliminate the "_pe_Aligned.out.bam"
+core_name="${star_files[$i]##*/}"
+core_name="${core_name#output_}"
+core_name="${core_name%_pe_Aligned.out.bam}"
+# The echo will send 2 strings:
+#   1st -> Input bam file
+#   2nd -> Path of output file
+# These strings are build in the echo
+echo "${star_files[$i]} ${out_dir_star}bigwig_${core_name}.bw"
+done | parallel -j ${n_files_star} --colsep ' ' run_bamcov_star
+
+# For HISAT2:
+for (( i=0; i<${#hisat_files[@]}; i+=1 )); do
+# Build the core_name var, it takes the element "i" of the array 
+# starting from the front of the string will eliminate all until a "/" is found,
+# then again starting from the front will eliminate the first instance of "output_",
+# finally starting from the back of the string will eliminate the "_pe.bam"
+core_name="${hisat_files[$i]##*/}"
+core_name="${core_name#output_}"
+core_name="${core_name%_pe.bam}"
+echo "${hisat_files[$i]} ${out_dir_hisat}bigwig_${core_name}.bw"
+done | parallel -j ${n_files_hisat} --colsep ' ' run_bamcov_hisat
+```
+Ejecución del script:
+Después de guardar el archivo, se otorgaron permisos de ejecución y fue lanzando.
+```bash
+# Execute permission
+chmod +x src/auto_pileup_gen.sh
+# Activate env
+conda activate deeptools
+# Execution
+./src/auto_pileup_gen.sh results/star/paired_end/bam results/hisat2/paired_end/bam results/star/pileup  results/hisat2/pileup 
+```
+## 4. Feature Counts por `subread`
+Para obtener las cuentas por gen necesarias para el análisis de expresión diferencial, podemos hacer uso del comando `featureCounts`.
+Para su correcta realización es necesario el archivo de anotación `GFF3` de la versión correspondiente a la usada para el alineamiento, en este caso el archivo fue descargado desde GENCODE de la versión M36 en este [link](https://www.gencodegenes.org/mouse/release_M36.html), y el archivo seleccionado fue el que contenía todas las regiones, este fue guardado en: `data/gencode.vM36`.
+Usando `vim src/auto_ft_counts.sh`:
+```bash
+#!/usr/bin/env bash
+
+# Runs bamCoverage for paired_end files of expected star and hisat2 alignments
+# This script expects eight arguments, 4 inputs, 4 outputs
+# Usage:
+#   ./auto_pileup_gen.sh <input_star_single_path> \
+#                       <input_star_paired_path> \
+#                       <input_hisat_single_path> \
+#                       <input_hisat_paired_path> \
+#                       <output_star_single_path> \
+#                       <output_star_paired_path> \
+#                       <output_hisat_single_path> \
+#                       <output_hisat_paired_path> \
+#   ./auto_pileup_gen.sh ../data/trimmed_fastqs ../results/star/paired_end
+
+# Allow extension of glob pattern
+shopt -s extglob
+
+# Create arrays of the names that match: *.bam files
+mapfile -t star_single < <(find "$1" -maxdepth 1 -type f -name "*.bam" | sort) # For Star_single
+mapfile -t star_paired < <(find "$2" -maxdepth 1 -type f -name "*.bam" | sort) # For Star_paired
+mapfile -t hisat_single < <(find "$3" -maxdepth 1 -type f -name "*.bam" | sort) # For Hisat2_single
+mapfile -t hisat_paired < <(find "$4" -maxdepth 1 -type f -name "*.bam" | sort) # For Hisat2_paired
+all_arrays=(star_single star_paired hisat_single hisat_paired)
+# Count how many files where found
+n_files_star=$(( ${#star_single[@]} )) # For Star
+n_files_hisat=$(( ${#hisat_single[@]} )) # For Hisat2
+
+
+run_ft_counts() {
+    # Arguments
+    #   -o "$2": Name of output file including read counts
+    #   -a: Name of an annotation file. GTF/GFF format
+    #   -T: Number of the threads
+    #   -a: bin size of 20 bp
+    #   --largestOverlap: Assign reads to a meta-feature/feature that has the largest number of overlapping bases
+    #   -p: Pair ends reads
+    #   -B: Only count read pairs that have both ends aligned
+    #   "$1": Path of the BAM file
+    if $3; then
+        featureCounts -o "$2" \
+         -a "/home/hectorjl/4to/transcriptomica/data/gencode.vM36/"\
+         "gencode.vM36.chr_patch_hapl_scaff.annotation.gff3.gz" \
+         -T 4 \
+         --largestOverlap \
+         "$1"    
+    else
+    featureCounts -o "$2" \
+         -a "/home/hectorjl/4to/transcriptomica/data/gencode.vM36/"\
+         "gencode.vM36.chr_patch_hapl_scaff.annotation.gff3.gz" \
+         -T 4 \
+         --largestOverlap \
+         -p \
+         -B \
+         "$1"
+    fi
+}
+# Export the function, needed for parallel to use it
+export -f run_ft_counts
+
+
+# Gather file output paths
+out_dir_star_se="${5%/}/" # For Star_se
+out_dir_star_pe="${6%/}/" # For Star_pe
+out_dir_hisat_se="${7%/}/" # For Hisat_se
+out_dir_hisat_pe="${8%/}/" # For Hisat_pe
+
+
+process_files() {
+    # Arguments
+    #   local -n input_array: Array of BAM files
+    #   local output_dir: Output path
+    #   local jobs: Jobs executed at the same time
+    local -n input_array=$1
+    local output_dir=$2
+    local jobs=$3
+
+    for ((i = 0; i < ${#input_array[@]}; i++)); do
+        core_name="${input_array[$i]##*/}"
+        core_name="${core_name#output_}"
+        core_name="${core_name%_pe@(_Aligned.out.bam|.bam)}"
+
+        echo "${input_array[$i]} ${output_dir}ft_counts_${core_name}.txt $4"
+    done | parallel -j "$jobs" --colsep ' ' run_ft_counts
+}
+
+process_files star_single  "$out_dir_star_se"   "$n_files_star" true
+process_files star_paired  "$out_dir_star_pe"   "$n_files_star" false
+process_files hisat_single "$out_dir_hisat_se"  "$n_files_hisat" true
+process_files hisat_paired  "$out_dir_hisat_pe"  "$n_files_hisat" false
+```
+Ejecución del script:
+Después de guardar el archivo, se otorgaron permisos de ejecución y fue lanzando.
+```bash
+# Permissions
+chmod +x src/auto_ft_counts.sh
+
+# Activate env
+conda activate subread
+
+# Execute
+./src/auto_ft_counts.sh results/star/single_end/bam \
+						results/star/paired_end/bam \
+						results/hisat2/single_end/bam \
+						results/hisat2/paired_end/bam \
+						results/star/feature_counts/single_end \
+						results/star/feature_counts/paired_end \
+						results/hisat2/feature_counts/single_end \
+						results/hisat2/feature_counts/paired_end
+```
+## 5. Pseudoalineamiento por `salmon`
+Cuando quieren hacer un análisis de cuantificación de RNA-seq, no es importante saber en qué sitio exacto del transcrito alinean las lecturas, sino saber solamente a qué transcritos corresponden.
+Esto es realizando por los pseudoalineadores, que justo asignan reads a transcritos, es decir usamos los archivos de lecturas y mapeamos contra un transcriptoma ya hecho. 
+En este caso se usará el algoritmo que implementa el pseudoalineador de `salmon`.
+Usando `vim src/auto_salmon.sh` se crea el siguiente script:
+```bash
+#!/usr/bin/env bash
+# Runs salmon quant for single and paired reads
+# This script expects three arguments
+# Usage:
+#   ./auto_salmon.sh <input_dir> <output_dir_se> <output_dir_pe>
+
+# Create an array of the names that match: *.sam
+mapfile -t single < <(find "$1" -maxdepth 1 -type f -name "clean_*_1.fastq" | sort) # Single_end
+mapfile -t paired < <(find "$1" -maxdepth 1 -type f -name "clean_*.fastq" | sort) # Paired_end
+# Calculate total file length
+n_single=$(( ${#single[@]} )) # Single_end
+n_paired=$(( ${#paired[@]} / 2 )) # Paired_end
+
+is_single=true
+# Hardcoded function
+run_salmon() {
+    # Arguments
+    #   -i: Index file
+    #   -l: Mode of Alignment
+    #   -r: Read file
+    #   -o: Output file path
+    if $4; then
+        salmon quant -i "/export/space3/users/silvanac/transcriptomica_2026/"\
+        "indexes/mm39.gencode.M36.salmon" \
+                    -l A \
+                    -r "$1" \
+                    -o "$2"
+    else
+        salmon quant -i "/export/space3/users/silvanac/transcriptomica_2026/"\
+        "indexes/mm39.gencode.M36.salmon" \
+                    -l A \
+                    -1 "$1" \
+                    -2 "$2" \
+                    -o "$3"
+    fi
+
+
+}
+# Export the function, needed for parallel to use it
+export -f run_salmon
+
+# Take the second argument passed to the main call ($2) and remove a "/" adding at the end a "/"
+out_dir="${2%/}/"
+
+for (( i=0; i<${#single[@]}; i+=1 )); do
+# Build the core_name var, it takes the element "i" of the array "single"
+# starting from the front of the string will eliminate all "*" until a "/" is found,
+# then again starting from the front will eliminate all ultil a "clean_" match is found,
+# finally starting from the back of the string will eliminate the ".fastq"
+core_name="${single[$i]##*/}"
+core_name="${core_name#clean_}"
+core_name="${core_name%.fastq}"
+# The echo will send 4 strings:
+#   1st -> The input file
+#   2nd -> Output name of the file
+#   3rd -> Placeholder
+#   4th -> Boolean-like flag
+# These strings are build in the echo
+echo "${single[$i]} ${out_dir}output_${core_name}.salmon _ $is_single"
+done | parallel -j ${n_single} --colsep ' ' run_salmon
+
+
+## Paired
+# Set flag to false
+is_single=false
+# Take the third argument in the main call
+out_dir="${3%/}/"
+for (( i=0; i<${#paired[@]}; i+=2 )); do
+
+core_name="${paired[$i]##*/}"
+core_name="${core_name#clean_}"
+core_name="${core_name%_1.fastq}"
+# The echo will send 4 strings:
+#   1st -> The input file read 1 
+#   2nd -> The input file read 2
+#   3rd -> Output name of the file
+#   4th -> Boolean-like flag
+# These strings are build in the echo
+echo "${paired[$i]} ${paired[$i+1]} ${out_dir}output_${core_name}.salmon $is_single"
+done | parallel -j ${n_paired} --colsep ' ' run_salmon
+```
+Ejecución del script:
+Después de guardar el archivo, se otorgaron permisos de ejecución y fue lanzando.
+```bash
+# Permissions
+chmod +x src/auto_salmon.sh
+
+# Activate env
+conda activate salmon
+
+# Execution
+./src/auto_salmon.sh ./data/trimmed_fastqs ./results/salmon/single_end ./results/salmon/paired_end
+```
+## 6. Conversión de abundancias de transcritos a abundancias de genes
+Usando la librería de `tximport`, se puede lograr esta transformación necesaria para el próximo análisis de expresión diferencial, por ello es necesario un ambiente que tenga disponible esas librerías.
+Además para lograrlo haremos uso de `R` como lenguaje de programación para lograr esta conversión.
+Como primer punto crearemos el script, mediante `vim autrge.R`:
+```R
+#!/usr/bin/env Rscript
+
+
+extract_attr_value <- function(attributes, key) {
+	# Extract the value of one attribute key from the attributes
+	# of a gff3 file, if a key is not found returns the original string }
+	# and converts them to NA_character_
+	# 
+	# Returns:
+	#	Character vector of extracted values or NA_character_
+
+	# gff3 style: key=value
+	gff33_pattern <- paste0(".*(?:^|;)", key, "=([^;]+).*")
+	value <- sub(gff33_pattern, "\\1", attributes, perl = TRUE)
+	value[value == attributes] <- NA_character_
+
+	value
+}
+
+load_tx2gene_from_annotation <- function(path) {
+	# Builds a transcript to gene mapping table from a gff3 annotation file.
+	# Reads feature type and attributes column of the gff3, keeps rows where the feature
+	# type is a transcript or mRNA, extract those transcript IDs and gene IDs, creates
+	# a table and cleans it from duplications
+	# 
+	# Returns:
+	#	A two column table of transcript, gene cleaned from duplications
+	
+	# Reads the gff3 file
+	gff3 <- read.delim(
+			path,
+			sep = "\t",
+			header = FALSE,
+			stringsAsFactors = FALSE,
+			quote = "",
+			comment.char = "#",
+			colClasses = c(
+				"NULL", "NULL", "character", "NULL", "NULL",
+				"NULL", "NULL", "NULL", "character"
+			)
+		)
+
+	# Extracts feature type and attributes column from the file
+	feature_type <- gff3[[1]]
+	attributes <- gff3[[2]]
+
+	# Select the rows were feature type is transcript or mRNA 
+	keep <- feature_type %in% c("transcript", "mRNA")
+	attributes <- attributes[keep]
+
+	# Extracts transcript IDs (tx_id)
+	tx_id <- extract_attr_value(attributes, "transcript_id") # Searches for transcript_id
+	tx_fallback <- extract_attr_value(attributes, "ID") # Fallback to seach ID
+	tx_id[is.na(tx_id)] <- tx_fallback[is.na(tx_id)] # Select tx_id or tx_fallback is tx_id is NA
+	tx_id <- sub("^transcript:", "", tx_id) # Removes transcript prefix
+	tx_id <- sub("\\.[0-9]+$", "", tx_id, perl = TRUE) # Removes the version suffix like .1 or .2 etc
+
+	# Extracts the gene ID
+	gene_id <- extract_attr_value(attributes, "gene_id") # Searches for gene_id
+	gene_fallback <- extract_attr_value(attributes, "Parent") # Fallback to seach Parent
+	gene_id[is.na(gene_id)] <- gene_fallback[is.na(gene_id)] # Select fallback if gene_id is NA
+	gene_id <- sub("^gene:", "", gene_id) # Removes prefix
+
+	# Creates a table of two columns, one for the transcript_id and one for the gene
+	tx2gene <- unique(data.frame(
+		transcript = tx_id,
+		gene = gene_id,
+		stringsAsFactors = FALSE # Do not convert string to factors
+	))
+
+	# Removes rows with empty transcript or gene
+	tx2gene <- tx2gene[nzchar(tx2gene$transcript) & nzchar(tx2gene$gene), , drop = FALSE]
+
+	# If a transcript maps to multiple genes, keeps only the first
+	if (anyDuplicated(tx2gene$transcript)) {
+		warning("Duplicate transcript IDs found in tx2gene mapping. Keeping first occurrence.")
+		tx2gene <- tx2gene[!duplicated(tx2gene$transcript), , drop = FALSE]
+	}
+
+	# Returns the cleaned table
+	tx2gene
+}
+
+run_tximport_and_write <- function(quant_files, output_tsv, tx2gene) {
+	# Runs transcript import (tximport) and writes the final table
+	# Returns:
+	#	A table with gene_id, transcript abundance for each quant file
+
+
+	# Runs tximport on the quant files (salmon generated) and the table tx2gene
+	txi <- tximport::tximport(
+		files = quant_files,
+		type = "salmon",
+		tx2gene = tx2gene,
+		ignoreTxVersion = TRUE
+	)
+
+	# Sets the output dir, creates it if it not found
+	out_dir <- dirname(output_tsv)
+	if (!dir.exists(out_dir)) {
+		dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+	}
+
+	# Gathers the gene abundance generated from tx abundance
+	gene_abundance <- data.frame(
+		gene_id = rownames(txi$abundance),
+		txi$abundance,
+		check.names = FALSE,
+		row.names = NULL,
+		stringsAsFactors = FALSE
+	)
+
+	# Writes the table to a file
+	write.table(
+		gene_abundance,
+		file = output_tsv,
+		sep = "\t",
+		quote = FALSE,
+		row.names = FALSE
+	)
+
+}
+
+# main:
+
+# Parses the arguments of the CLI
+args <- commandArgs(trailingOnly = TRUE)
+input_dir_single <- args[[1]]
+input_dir_paired <- args[[2]]
+output_tsv_single <- args[[3]]
+output_tsv_paired <- args[[4]]
+# Path of the annotation file
+annotation_file <- paste0("/home/hectorjl/WORKING_DIR/4to/transcriptomica/",
+"data/gencode.vM36/gencode.vM36.chr_patch_hapl_scaff.annotation.gff3.gz")
+
+# Loads and sort the quant files of single end reads
+quant_files_single <- list.files(
+	path = input_dir_single,
+	pattern = "^quant\\.sf$",
+	full.names = TRUE,
+	recursive = TRUE
+)
+quant_files_single <- sort(quant_files_single)
+
+# Gathers by REGEX the core name of the SRR
+sample_names_single <- basename(dirname(quant_files_single))
+sample_names_single <- sub("^output_", "", sample_names_single)
+sample_names_single <- sub("\\.salmon$", "", sample_names_single)
+sample_names_single <- make.unique(sample_names_single, sep = "_")
+names(quant_files_single) <- sample_names_single
+
+# Load and sort paired end quant files
+quant_files_paired <- list.files(
+	path = input_dir_paired,
+	pattern = "^quant\\.sf$",
+	full.names = TRUE,
+	recursive = TRUE
+)
+quant_files_paired <- sort(quant_files_paired)
+# Gathers by REGEX core name
+sample_names_paired <- basename(dirname(quant_files_paired))
+sample_names_paired <- sub("^output_", "", sample_names_paired)
+sample_names_paired <- sub("\\.salmon$", "", sample_names_paired)
+sample_names_paired <- make.unique(sample_names_paired, sep = "_")
+names(quant_files_paired) <- sample_names_paired
+
+# Loads the annotation file
+tx2gene <- load_tx2gene_from_annotation(annotation_file)
+
+# Run the function for single end reads
+run_tximport_and_write(
+	quant_files = quant_files_single,
+	output_tsv = output_tsv_single,
+	tx2gene = tx2gene
+)
+
+# Runs the function for paired end reads
+run_tximport_and_write(
+	quant_files = quant_files_paired,
+	output_tsv = output_tsv_paired,
+	tx2gene = tx2gene
+)
+```
+Y para su ejecución haremos uso de un ambiente personal y se ejecutará:
+```bash
+# Conda/Mamba env avaible in chaac.lgc.unam.mx server
+mamba activate /home/hectorjl/.conda/envs/.main_mamba
+
+# Run the script
+Rscript src/autrge.R results/salmon/single_end results/salmon/paired_end results/salmon/tximport/single_end/gene_ab.tsv results/salmon/tximport/paired_end/gene_ab.tsv
+```
+# Discusión
+
+La comparando los alineadores convencionales contra los pseudoalineadores podemos observar que mientras que `STAR` y `HISAT2` realizan un mapeo base a base que consume recursos considerables de memoria y tiempo, `Salmon` optimiza el proceso ignorando las coordenadas exactas de alineamiento, enfocándose únicamente en la probabilidad de que una lectura pertenezca a un transcrito específico lo cual se traduce en menor costo computacional y tiempo de ejecución.
+
+Para el procesamiento de los archivos `BAM` fue aplicado un filtrado por calidad de mapeo (`MAPQ > 10`). Esta decisión técnica asegura que las visualizaciones generadas en formato **BigWig** a través de `deeptools` representen regiones con alta confiabilidad genómica, evitando el ruido producido por lecturas multimapeadas o alineamientos ambiguos.
+
+Y por último, la integración de `tximport` resultó fundamental en la etapa final. Dado que `Salmon` cuantifica abundancias a nivel de transcrito (isoformas), la conversión a niveles de gen es necesaria para reducir la dimensionalidad y aumentar la potencia estadística en análisis de expresión diferencial próximo. Esta transición permite combinar la precisión del pseudoalineamiento con la interpretabilidad biológica de los conteos por gen obtenidos tradicionalmente con `featureCounts`, demostrando que ambos enfoques pueden ser complementarios dependiendo de si el objetivo es el descubrimiento de nuevas isoformas o la cuantificación robusta de genes conocidos.
+
+# Conclusión
+
+El análisis realizado demuestra que el pseudoalineamiento con `Salmon` representa una alternativa superior en términos de velocidad y ahorro de recursos para la cuantificación de RNA-seq, especialmente cuando se trabaja con grandes volúmenes de datos. No obstante, el flujo de trabajo tradicional sigue siendo imprescindible cuando se requiere una inspección visual detallada o el análisis de variantes, donde los archivos de *pileup* y la visualización genómica son herramientas de diagnóstico esenciales, además de que `Salmon` tiene la limitante de usar un transcriptoma previamente generado, lo cual evita el descubrimiento de nuevos transcritos que ofrece el mapeo con los alineadores tradicionales.
+
+Finalmente, la elección entre alineamiento y pseudoalineamiento no debe verse como excluyente. Mientras que `Salmon` facilita una cuantificación rápida y precisa para estudios de expresión diferencial, el alineamiento tradicional proporciona el contexto espacial necesario para comprender la arquitectura del genoma. La capacidad de ejecutar ambos procesos de manera coordinada fortalece la validez técnica de los resultados y prepara el terreno para una interpretación biológica más profunda.
+
+
+# Referencias
+1. Bash Reference Manual. (s. f.). https://www.gnu.org/software/bash/manual/bash.html 
+2. GENCODE - Mouse Release M36. (s. f.). https://www.gencodegenes.org/mouse/release_M36.html 
+3. Genomic coordinates of problematic genomic regions. (s. f.). https://dozmorovlab.github.io/excluderanges/index.html 
+4. tximport. (s. f.). Bioconductor. https://bioconductor.org/packages/release/bioc/html/tximport.html
