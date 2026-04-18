@@ -1,0 +1,28 @@
+There are 30029748 alignments, of which 6700026 are completely within a blacklist region.
+Due to filtering, 29.4467491239236% of the aforementioned alignments will be used 6869844.708648811
+There are 36010256 alignments, of which 10960484 are completely within a blacklist region.
+Due to filtering, 29.293111026168116% of the aforementioned alignments will be used 7337857.523761974
+There are 42439504 alignments, of which 9365386 are completely within a blacklist region.
+Due to filtering, 17.902714724847012% of the aforementioned alignments will be used 5921164.993299277
+There are 44397850 alignments, of which 6447081 are completely within a blacklist region.
+Due to filtering, 29.802755422179782% of the aforementioned alignments will be used 11310374.865906425
+There are 43779178 alignments, of which 9367688 are completely within a blacklist region.
+Due to filtering, 24.715621472472606% of the aforementioned alignments will be used 8505013.611437762
+There are 45342956 alignments, of which 9158317 are completely within a blacklist region.
+Due to filtering, 25.24291268392288% of the aforementioned alignments will be used 9134056.827762704
+There are 49471296 alignments, of which 7363817 are completely within a blacklist region.
+Due to filtering, 28.54521584307377% of the aforementioned alignments will be used 12019670.76662696
+There are 26394280 alignments, of which 3757359 are completely within a blacklist region.
+Due to filtering, 27.23005673046871% of the aforementioned alignments will be used 6164046.430331385
+There are 29375236 alignments, of which 4512118 are completely within a blacklist region.
+Due to filtering, 29.648395095446478% of the aforementioned alignments will be used 7371515.457687071
+There are 40446498 alignments, of which 5304201 are completely within a blacklist region.
+Due to filtering, 23.29144764509926% of the aforementioned alignments will be used 8185149.7070402885
+There are 40079926 alignments, of which 3166756 are completely within a blacklist region.
+Due to filtering, 30.279406569608625% of the aforementioned alignments will be used 11177088.8220308
+There are 37424942 alignments, of which 5387099 are completely within a blacklist region.
+Due to filtering, 18.85686873429132% of the aforementioned alignments will be used 6041333.99980834
+There are 44914016 alignments, of which 4280366 are completely within a blacklist region.
+Due to filtering, 29.128615395715094% of the aforementioned alignments will be used 11836019.629740987
+There are 39180166 alignments, of which 5838647 are completely within a blacklist region.
+Due to filtering, 25.840773499399816% of the aforementioned alignments will be used 8615706.406049354
