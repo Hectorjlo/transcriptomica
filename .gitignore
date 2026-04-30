@@ -1,0 +1,20 @@
+# Shadow the BIG files
+*.sam
+*.bam
+*.salmon
+DE_analysis/data/SRRs
+DE_analysis/data/trimmed_fastqs
+
+# Shadow vscode files
+*.vscode/
+
+# Shadow rust files
+DE_analysis/src/stats/target/*
+# Not shadow the release
+DE_analysis/!src/stats/target/release
+DE_analysis/src/stats/target/release/*
+DE_analysis/!src/stats/target/release/stats
+
+# Shadow nextflow files
+*.nextflow
+
