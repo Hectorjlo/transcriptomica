@@ -4,6 +4,7 @@
 *.salmon
 DE_analysis/data/SRRs
 DE_analysis/data/trimmed_fastqs
+nextflow_examples/results/trimmed/
 
 # Shadow vscode files
 *.vscode/
