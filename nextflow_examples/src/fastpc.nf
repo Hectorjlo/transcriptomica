@@ -50,29 +50,48 @@ process trim_by_fastp {
           --detect_adapter_for_pe --trim_poly_g -l 50 -w ${cores}
     """
 }
+// As process can not called twice in the same workflow
+// to reuse processes it is need it to split into 
+// subworkflows
 
 workflow raw_qc {
+    // Argument expected
     take:
     SRR_pairs
 
     main:
+    // Calls fastqc process, it sends three arguments
+    // 1st -> The SRR pairs (read_1 and read_2)
+    // 2nd -> Number of cores
+    // 3rd ->  A string that will be used to output name ("raw")
     fastqc(SRR_pairs, params.cores, "raw")
 }
 
 workflow clean_qc {
+    // Argument expected
     take:
     SRR_pairs
 
     main:
+    // Calls fastqc process, it sends three arguments
+    // 1st -> The SRR pairs (read_1 and read_2)
+    // 2nd -> Number of cores
+    // 3rd ->  A string that will be used to output name ("cleaned")
     fastqc(SRR_pairs, params.cores, "cleaned")
 }
 
+
+// Main workflow
 workflow {
     main:
+    // Define the files pairs using REGEX-like expression
     SRR_pairs = channel.fromFilePairs("${params.fqs_dir}/*_{1,2}.fastq")
-
+    // These two processes are run in parallel
+    // Call to the raw_qc workflow
     raw_qc(SRR_pairs)
+    // Trim at the same time the fastp files
     trimmed = trim_by_fastp(SRR_pairs, params.cores)
 
+    // After the trimming is done run fastqc in those files
     clean_qc(trimmed)
 }
