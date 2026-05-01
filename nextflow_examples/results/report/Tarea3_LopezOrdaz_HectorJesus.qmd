@@ -16,11 +16,14 @@ format:
         \usepackage{fvextra}
         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\footnotesize}
 ---
+
+
 # Planteamiento
 
 El análisis de datos genómicos de secuenciación masiva requiere la ejecución de múltiples pasos computacionales; Uno de los primeros es aplicar el control de calidad y el recorte de secuencias. Tradicionalmente, estas tareas se han abordado mediante la ejecución manual de comandos o el desarrollo de _scripts_ de Bash iterativos. Sin embargo, el enfoque clásico suele ser tedioso, ya que se debe analizar cada archivo de secuencias uno a uno por medio de `fastqc` o de manera conjunta encadenando con `multiqc`, por lo cual la escalabilidad es complicada aún más cuando los datos de secuenciación se han vuelto más económicos lo que incrementa el volumen de las muestras, creando un cuello de botella por el tiempo empleado.
 
 Una de las herramientas, que propone resolver este problema es Nextflow. Surge como un sistema de gestión de flujos de trabajo (_workflows_) diseñado para solventar estas problemáticas, permitiendo la creación de _pipelines_ de análisis de datos reproducibles, paralelizables y portables. En este trabajo, se explora la implementación de un flujo de trabajo en Nextflow para automatizar el uso de `fastqc` para generar reportes de las lecturas crudas, seguido de un *trimming* por `fastp` y nuevamente generar reportes `fastqc` sobre los archivos procesados todo orquestado por un solo *script* de `Nextflow`.
+
 # Objetivos
 
 ## Objetivo general
@@ -36,6 +39,7 @@ Evaluar la eficiencia, reproducibilidad y escalabilidad de la implementación de
 - Comparar operativamente el flujo de trabajo construido en Nextflow frente a un análisis manual tradicional, evaluando las ventajas y desventajas de un _pipeline_ automatizado en términos de escritura, tolerancia a fallos y trazabilidad.
 
 # Metodología
+
 ## Nextflow script
 
 Para iniciar, se reacomodó la carpeta de `transcriptomica` para tener un orden sobre los distintos proyectos, por lo cual a nivel `transcriptomica` (`/home/hectorjl/4to/transcriptomica`):
@@ -151,6 +155,7 @@ workflow {
     clean_qc(trimmed)
 }
 ```
+
 Ejecución del script:
 ```bash
 nextflow run fastpc.nf \
@@ -159,6 +164,7 @@ nextflow run fastpc.nf \
 --fastp_dir ../results/trimmed \
 --cores 20
 ```
+
 Realizando un `tree` de `results/trimmed`
 ```bash
 results/trimmed
@@ -177,6 +183,7 @@ results/trimmed
 ├── clean_SRR9127396_1.fastq
 └── clean_SRR9127396_2.fastq
 ```
+
 ## Ejecución de `Multiqc`
 Ahora hagamos un `multiqc` de los archivos `fastqc` generados.
 ```bash
