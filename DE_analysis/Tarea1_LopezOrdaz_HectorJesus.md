@@ -26,13 +26,13 @@ El flujo de trabajo se automatizó bajo los siguientes pasos:
 * Se identificó ruido inicial sistemático (10-15 pb).
 
 Heatmap del estado general de las muestras, generado por `multiqc`:
-![Raw Status Heatmap](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/results/plots/raw_fastqc-status-check-heatmap.png)
+![Raw Status Heatmap](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/plots/raw_fastqc-status-check-heatmap.png)
 
 ### Hallazgos Post-Limpieza (Trimming):
 A través del corte frontal, eliminación de adaptadores y detección de colas Poli-G, se restauró el equilibrio de calidad en las muestras. El estatus de "Per-Sequence-Content" transicionó de "FAIL" a "PASS" en la mayoría de las muestras.
 
 Heatmap del estado general de las muestras, generado por `multiqc`:
-![Clean Heatmap Status](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/results/plots/clean_fastqc-status-check-heatmap.png)
+![Clean Heatmap Status](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/plots/clean_fastqc-status-check-heatmap.png)
 
 ## 5. Alineamiento - Diseño Comparativo
 Se probaron distintos dos alineadores diferentes, cada uno probado con lecturas *paired-end* y *single-end*:
@@ -57,7 +57,7 @@ Se probaron distintos dos alineadores diferentes, cada uno probado con lecturas 
 ### Estadísticas de Alineamiento
 Los archivos de la validación fueron estructurados (**Rust**, *ver Apéndice B.1*) y graficados (**R**, *ver Apéndice B.2*) para el análisis visual.
 
-![Point plot](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/results/plots/stats_points.png)
+![Point plot](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/plots/stats_points.png)
 
 ## 7. Conclusiones
 * **STAR sobre HISAT2:** STAR superó a HISAT2 al reportar menos lecturas *no alineadas* y un *aligned rate* consistentemente mejor (~5-10% superior en general), adicional a su beneficio en velocidad. 
