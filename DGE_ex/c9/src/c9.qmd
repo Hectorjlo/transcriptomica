@@ -1,0 +1,95 @@
+```{r}
+library(DESeq2)
+library(ggplot2)
+library(ComplexHeatmap)
+library(dplyr)
+library(edgeR)
+```
+
+```{r}
+counts = read.delim("DGE_ex/c9/data/complex-counts.tsv", row.names=1)
+annotation = read.delim("DGE_ex/c9/data/annotation.tsv", row.names=1)
+gene_name_map = read.delim("DGE_ex/c9/data/mm39-gencode-M36-gene_id-gene_name.txt", header=FALSE, row.names=1)
+```
+
+```{r}
+# Factores de interacción
+genotipo = factor(c(rep("WT",6),rep("KO",6)), levels=c("WT","KO"))
+tratamiento = factor(c(rep("C",3),rep("T",3),rep("C",3),rep("T",3)), levels=c("C","T"))
+
+# Factor combinado
+condition = interaction(genotipo, tratamiento , sep="_")
+```
+
+```{r}
+# Crear el dataframe de metadatos
+sample_names = colnames(counts)
+meta_data = data.frame(row.names=sample_names, condition, genotipo, tratamiento)
+
+# Revisar que los nombres en los metadatos estén en el mismo orden que los de la tabla de conteos
+all(colnames(counts) == rownames(meta_data))
+```
+
+```{r}
+# Cargar los conteos y la anotación a un objeto de edgeR
+dds = DESeqDataSetFromMatrix(countData = counts, colData = meta_data, design= ~ genotipo + tratamiento + genotipo:tratamiento)
+design = model.matrix(~ genotipo + tratamiento + genotipo:tratamiento)
+```
+```{r}
+# Filter low expressed genes with filterByExpr function from edgeR
+keep = filterByExpr(dds, design)
+sum(keep)
+dds = dds[keep,]
+rm(keep) # Delete filter, it is heavy and not used from now on
+```
+```{r}
+vsd = vst(dds)
+plotPCA(vsd, intgroup = c("genotipo")) + aes(shape=tratamiento) + theme_classic(base_size=18, base_line_size = 1)
+```
+```{r}
+dds = DESeq(dds)
+```
+
+```{r}
+# Add gene length
+mcols(dds)$basepairs = annotation[rownames(dds),]
+
+log2_fpkm = log2(fpkm(dds)+0.1) # Calculate log2 FPKM
+fpkm2tpm_log2 <- function(fpkm) { fpkm - log2(sum(2^fpkm)) + log2(1e6) } # function to convert FPKM to TPM
+log2_tpm = apply(log2_fpkm, 2, fpkm2tpm_log2) # We apply the function
+```
+```{r}
+resultsNames(dds)
+
+# genotipo_KO_vs_WT es la comparación de los genotipos en el tratamiento basal, es decir, WT_C vs KO_C. Esto es sólo para demostrar que entre ellos hay poco cambio. 
+
+# tratamiento_T_vs_C es la comparación del tratamiento en el genotipo basal, es decir WT_T vs WT_C.
+
+# Finalmente, genotipoKO.tratamientoT es la comparación que queremos, porque nos dice el efecto del tratamiento sobre el genotipo. Es equivalente a comparar (KO_T vs KO_C) vs (WT_T vs WT_C), que es el efecto que queremos.
+```
+```{r}
+contrasts = list(
+    KO_C_vs_WT_C = c("genotipo_KO_vs_WT"),
+    WT_T_vs_WT_C = c("tratamiento_T_vs_C"),
+    KO_effect = c("genotipoKO.tratamientoT")
+)
+```
+
+Hacer expresión diferencial
+```{r}
+# Límites para considerar a un gen significativo
+FDR = 1e-5
+LFC = 0.5
+
+for (name in names(contrasts)){
+    res = results(dds, name=unlist(contrasts[name]))
+    
+    up = (res$log2FoldChange > LFC) & (res$padj < FDR) 
+    up[which(is.na(up))] = FALSE # eliminate NAs
+    cat ("Upregulated in", name, sum(up), "\n")
+
+    down = (res$log2FoldChange < -LFC) & (res$padj < FDR) 
+    down[which(is.na(down))] = FALSE # eliminate NAs
+    cat ("Downregulated in", name, sum(down), "\n")
+}
+```
