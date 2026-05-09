@@ -1,13 +1,23 @@
 # Comentario
 ## Documentación
 
+###
+# Uso: Rscript DEA_DESeq2.R <gene_counts_file> <annotacion_file> <gene_map_file> <result_dir> 
+###
+
+# Desactiva el dispositivo PDF
+pdf(file = NULL)
+
 # Carga de las librerías necesarias para el análisis
-library(DESeq2)
-library(ggplot2)
-library(ComplexHeatmap)
-library(dplyr)
-library(tibble)
-library(circlize)
+suppressPackageStartupMessages({
+    library(DESeq2)
+    library(ggplot2)
+    library(ComplexHeatmap)
+    library(dplyr)
+    library(tibble)
+    library(edgeR)
+    library(circlize)
+})
 
 # Obten los argumentos del paseo de la CLI
 args <- commandArgs(trailingOnly = TRUE)
@@ -16,7 +26,7 @@ annotacion_file_path <- args[[2]]
 gene_name_map_file_path <- args[[3]]
 results_files_dir <- args[[4]]
 
-
+results_files_dir <- gsub("/*$", "/", results_files_dir)
 
 # Lee los archivos de conteos, anotación y del genemap
 gene_counts <- read.delim(gene_counts_path, row.names=1)
@@ -239,7 +249,15 @@ volcano_plot <- ggplot(
         base_line_size = 1
     )
 
-volcano_plot
+
+
+ggsave(filename = paste(results_files_dir, "plots/vulcano_plot.png", sep = ""), 
+    plot = volcano_plot, 
+    dpi = 300, 
+    width = 11.25, 
+    height = 7.5,
+    create.dir = TRUE
+)
 
 # Formar el Heatmap
 # Obten genes "up" o "down" *regulated*
@@ -270,7 +288,10 @@ heatmap_plot <- Heatmap(
         c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
 )
 
+png(paste(results_files_dir, "plots/heatmap_all.png", sep = ""), 
+    width = 1000, height = 1200, res = 300)
 draw(heatmap_plot)
+dev.off()
 
 # Formar Heatmap top20
 significant <- head(rownames(significant_order), n = 20)
@@ -283,7 +304,15 @@ top_20_heatmap <- Heatmap(
     name = "Z-score", 
     km = 2, 
     column_title = "Top 20 significant genes",
-    col = colorRamp2(c(-3, -1.5, 0, 1.5, 3), 
-        c("#001866", "#1034A6", "white", "#D3212D", "#F62D2D"))
+    col = colorRamp2(c(-2, -1, 0, 1, 2), 
+        c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
 )
+
+
+png(paste(results_files_dir, "plots/heatmap_top20.png", sep = ""), 
+    width = 1000, height = 1200, res = 300)
 draw(top_20_heatmap)
+dev.off()
+
+# Cierra dispositivos gráficos
+graphics.off()
