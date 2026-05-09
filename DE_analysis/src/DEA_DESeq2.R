@@ -7,19 +7,15 @@ library(ggplot2)
 library(ComplexHeatmap)
 library(dplyr)
 library(tibble)
-library(edgeR)
 library(circlize)
 
 # Obten los argumentos del paseo de la CLI
-# args <- commandArgs(trailingOnly = TRUE)
-# gene_counts_path <- args[[1]]
-# annotacion_file_path <- args[[2]]
-# gene_name_map_file_path <- args[[3]]
+args <- commandArgs(trailingOnly = TRUE)
+gene_counts_path <- args[[1]]
+annotacion_file_path <- args[[2]]
+gene_name_map_file_path <- args[[3]]
+results_files_dir <- args[[4]]
 
-#! Fijo ejemplo para hisat/single_end
-gene_counts_path <- "DE_analysis/results/hisat2/feature_counts/single_end/feature_counts_global.tsv"
-annotacion_file_path <- "DE_analysis/data/gencode.vM36/gencode.vM36.gene_id.length.tsv"
-gene_name_map_file_path <- "DE_analysis/data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt"
 
 
 # Lee los archivos de conteos, anotación y del genemap
@@ -144,7 +140,7 @@ write.table(
         gene_names,
         log2_tmp
     ),
-    file = "DE_analysis/results/hisat2/DE_analysis/TPM_log2-table.txt", #! Fijo actualmente
+    file = paste(results_files_dir, "TPM_log2-table.txt", sep = ""),
     sep = "\t",
     quote = FALSE
 )
@@ -155,7 +151,6 @@ print("Nombres disponibles para contrastes:")
 print(resultsNames(dds))
 
 # Crea el contraste
-#! Fijo actualmente
 contrasts <- makeContrasts(m24_vs_m3 = agem24 - agem3,
     levels = design
 )
@@ -186,7 +181,7 @@ cat("Downregulated: ", sum(down), "\n")
 # Guardar las tablas para "up" y "down" regulated
 write.table(
     res[up, ],
-    paste("DE_analysis/results/hisat2/DE_analysis/deseq-DEG-up", 
+    paste(results_files_dir, "deseq-DEG-up", 
         FDR, 
         ".txt", 
         sep =""
@@ -194,11 +189,11 @@ write.table(
     sep = "\t",
     quote = FALSE,
     row.names = T
-) #! Fijo
+)
 
 write.table(
     res[down, ],
-    paste("DE_analysis/results/hisat2/DE_analysis/deseq-DEG-down", 
+    paste(results_files_dir, "deseq-DEG-down", 
         FDR, 
         ".txt", 
         sep = ""
@@ -206,7 +201,7 @@ write.table(
     sep = "\t",
     quote = FALSE,
     row.names = T
-) #! Fijo
+)
 
 # Forma el "volcano plot"
 # Asigna colores
@@ -288,7 +283,7 @@ top_20_heatmap <- Heatmap(
     name = "Z-score", 
     km = 2, 
     column_title = "Top 20 significant genes",
-    col = colorRamp2(c(-2, -1, 0, 1, 2), 
-        c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
+    col = colorRamp2(c(-3, -1.5, 0, 1.5, 3), 
+        c("#001866", "#1034A6", "white", "#D3212D", "#F62D2D"))
 )
 draw(top_20_heatmap)
