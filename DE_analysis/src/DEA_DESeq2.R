@@ -289,7 +289,7 @@ heatmap_plot <- Heatmap(
 )
 
 png(paste(results_files_dir, "plots/heatmap_all.png", sep = ""), 
-    width = 1000, height = 1200, res = 300)
+    width = 11.25, height = 7.5, res = 300, units = "in")
 draw(heatmap_plot)
 dev.off()
 
@@ -310,7 +310,7 @@ top_20_heatmap <- Heatmap(
 
 
 png(paste(results_files_dir, "plots/heatmap_top20.png", sep = ""), 
-    width = 1000, height = 1200, res = 300)
+    width = 11.25, height = 7.5, res = 300, units = "in")
 draw(top_20_heatmap)
 dev.off()
 
