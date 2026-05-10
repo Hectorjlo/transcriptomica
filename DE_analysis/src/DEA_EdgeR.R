@@ -406,6 +406,16 @@ dev.off()
 
 # Formar Heatmap top20
 significant <- head(rownames(significant_order), n = 20)
+
+# Guardar la tabla de los top 20 genes significativos
+write.table(
+    significant_order[significant, ],
+    file = paste(results_files_dir, "DEG_top20_table.tsv", sep = ""),
+    sep = "\t",
+    quote = FALSE,
+    row.names = TRUE
+)
+
 z_score_top_20 <- t(scale(t(log2_tmp[significant, ])))
 top_20_heatmap <- Heatmap(
     z_score_top_20,
