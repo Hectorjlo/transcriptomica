@@ -170,7 +170,7 @@ contrasts <- makeContrasts(m24_vs_m3 = agem24 - agem3,
 # Realiza el análisis de expresión diferencial
 ## En este caso al ser solo uno es directo
 ## Se usa el contraste comparando agem24 vs agem3
-glm_LRT <- glmLRT(fit, contrast = contrasts[, "m24_vs_m9"])
+glm_LRT <- glmLRT(fit, contrast = contrasts[, "m24_vs_m3"])
 res <- topTags(glm_LRT, n = Inf, sort.by = "none")$table
 # Añade Gene name
 res$Gene_name <- gene_name_map[rownames(res), ]
