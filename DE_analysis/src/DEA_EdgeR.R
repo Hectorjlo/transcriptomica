@@ -293,6 +293,15 @@ down <- (res$logFC < -LogFC) & (res$FDR < FDR)
 down[which(is.na(down))] <- FALSE
 cat("Downregulated: ", sum(down), "\n")
 
+# Guarda el resumen de genes diferenciales en un archivo
+writeLines(
+    c(
+        paste("Upregulated:", sum(up)),
+        paste("Downregulated:", sum(down))
+    ),
+    con = paste(results_files_dir, "DEG_summary.txt", sep = "")
+)
+
 # Guardar las tablas para "up" y "down" regulated
 write.table(
     res[up, ],
