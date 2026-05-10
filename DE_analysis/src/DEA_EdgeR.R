@@ -9,14 +9,16 @@
 pdf(file = NULL)
 
 # Carga de las librerías necesarias para el análisis
-suppressPackageStartupMessages({
-    library(ggplot2)
-    library(ComplexHeatmap)
-    library(dplyr)
-    library(tibble)
-    library(edgeR)
-    library(circlize)
-})
+suppressWarnings(
+    suppressPackageStartupMessages({
+        library(ggplot2)
+        library(ComplexHeatmap)
+        library(dplyr)
+        library(tibble)
+        library(edgeR)
+        library(circlize)
+    })
+)
 
 # Obten los argumentos del paseo de la CLI
 args <- commandArgs(trailingOnly = TRUE)
@@ -105,7 +107,7 @@ print("Genes totales:")
 print(nrow(dge))
 
 # Filtrar los genes con baja expresión
-keep <- filterByExpr(dge, design)
+keep <- filterByExpr(dge, design, min.count = 20)
 print("Genes después de filtrado por expresión:")
 print(sum(keep))
 # Selecciona solo los genes que pasan el filtro
@@ -114,7 +116,7 @@ dge <- dge[keep, , keep.lib.sizes = FALSE]
 rm(keep)
 
 ## Se creará el PCA plot usando logCPM
-dge <- calcNormFactors(dge)
+dge <- calcNormFactors(dge, method = "TMM")
 log_cpm <- cpm(dge, log = TRUE, prior.count = 1)
 pca_res <- prcomp(t(log_cpm), scale. = TRUE)
 pca_df <- data.frame(
@@ -127,8 +129,8 @@ ggplot(pca_df, aes(x = PC1, y = PC2, color = age)) +
     theme_minimal(base_size = 18, base_line_size = 1)
 
 # Estima la dispersión y ajusta el modelo
-dge <- estimateDisp(dge, design)
-fit <- glmQLFit(dge, design)
+dge <- estimateDisp(dge, design, robust = TRUE)
+fit <- glmFit(dge, design, robust = TRUE)
 
 ## Se calculó los TPM, métrica importante pero no indespensable
 # Añade la longitud de los genes (en bp)
@@ -168,8 +170,8 @@ contrasts <- makeContrasts(m24_vs_m3 = agem24 - agem3,
 # Realiza el análisis de expresión diferencial
 ## En este caso al ser solo uno es directo
 ## Se usa el contraste comparando agem24 vs agem3
-qlf <- glmQLFTest(fit, contrast = contrasts[, "m24_vs_m3"])
-res <- topTags(qlf, n = Inf, sort.by = "none")$table
+glm_LRT <- glmLRT(fit, contrast = contrasts[, "m24_vs_m9"])
+res <- topTags(glm_LRT, n = Inf, sort.by = "none")$table
 # Añade Gene name
 res$Gene_name <- gene_name_map[rownames(res), ]
 

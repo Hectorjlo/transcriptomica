@@ -9,15 +9,17 @@
 pdf(file = NULL)
 
 # Carga de las librerías necesarias para el análisis
-suppressPackageStartupMessages({
-    library(DESeq2)
-    library(ggplot2)
-    library(ComplexHeatmap)
-    library(dplyr)
-    library(tibble)
-    library(edgeR)
-    library(circlize)
-})
+suppressWarnings(
+    suppressPackageStartupMessages({
+        library(DESeq2)
+        library(ggplot2)
+        library(ComplexHeatmap)
+        library(dplyr)
+        library(tibble)
+        library(edgeR)
+        library(circlize)
+    })
+)
 
 # Obten los argumentos del paseo de la CLI
 args <- commandArgs(trailingOnly = TRUE)
