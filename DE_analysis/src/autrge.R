@@ -100,7 +100,9 @@ run_tximport_and_write <- function(quant_files, output_tsv, tx2gene) {
 	if (!dir.exists(out_dir)) {
 		dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 	}
-
+	# Save the rds tximport object
+  rds_path <- sub("\\.tsv$", ".rds", output_tsv)
+  saveRDS(txi, file = rds_path)
 	# Gathers the gene abundance generated from tx abundance
 	gene_abundance <- data.frame(
 		gene_id = rownames(txi$abundance),
@@ -130,7 +132,7 @@ input_dir_paired <- args[[2]]
 output_tsv_single <- args[[3]]
 output_tsv_paired <- args[[4]]
 # Path of the annotation file
-annotation_file <- "/home/hectorjl/WORKING_DIR/4to/transcriptomica/data/gencode.vM36/gencode.vM36.chr_patch_hapl_scaff.annotation.gff3.gz"
+annotation_file <- "/home/hectorjl/WORKING_DIR/4to/transcriptomica/DE_analysis/data/gencode.vM36/gencode.vM36.chr_patch_hapl_scaff.annotation.gff3.gz"
 
 # Loads and sort the quant files of single end reads
 quant_files_single <- list.files(
