@@ -1,0 +1,2 @@
+Upregulated: 20
+Downregulated: 9
