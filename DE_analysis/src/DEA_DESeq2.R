@@ -28,7 +28,7 @@ suppressWarnings(
 parser <- list(
     # Obtiene el path de counts o txi
     make_option(
-        c("--counts", "--txi"),
+        "--counts",
         type = "character"
     ),
     # Obtiene el path del archivo de anotación
@@ -56,7 +56,7 @@ parser <- list(
 )
 
 # Parsea el objeto para ser accedido por índice
-agrs <- parse_args(OptionParser(option_list = parser))
+args <- parse_args(OptionParser(option_list = parser))
 
 # Obten los argumentos del paseo de la CLI
 gene_counts_or_txi_path <- args$counts
