@@ -1,0 +1,1282 @@
+---
+title: "Análisis de Expresión Diferencial"
+author: "Héctor Jesús López-Ordaz"
+date: "2026-05-10"
+lang: es
+
+format:
+  pdf:
+    highlight-style: breezedark
+    pdf-engine: xelatex
+    toc: true
+    mainfont: "Times New Roman"
+    fontsize: 11pt
+    include-in-header:
+      text: |
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\footnotesize}
+---
+# Planteamiento
+
+El análisis de expresión diferencial a partir de datos de secuenciación masiva (RNA-seq) constituye una etapa fundamental para la comprensión de los mecanismos biológicos. Uno de los retos principales radica en la variabilidad introducida por las distintas estrategias de procesamiento y por la naturaleza de las bibliotecas. Tradicionalmente, la elección de la herramienta estadística y del algoritmo de preprocesamiento puede sesgar los resultados, por lo que resulta importante comprender cómo los diferentes enfoques computacionales impactan las estimaciones finales.
+
+Dos de las herramientas más utilizadas para abordar este problema son `DESeq2` y `edgeR`. Ambas surgen como sistemas estadísticos robustos que modelan los datos mediante distribuciones binomiales negativas, pero difieren en sus aproximaciones de normalización y estimación de la dispersión. En este trabajo, se analiza el comportamiento de ambos enfoques para observar sus diferencias. Para ello, se examinan tablas de conteos provenientes de alineadores tradicionales (`HISAT2` y `STAR`), así como tablas generadas a través de tximport para el pseudoalineador `Salmon`, evaluando en todos los casos el uso de datos de *single-end* y *paired-end*.
+
+# Objetivos
+
+## Objetivo general
+
+Comparar el desempeño y las diferencias algorítmicas en el análisis de expresión diferencial entre los enfoques de `DESeq2` y `edgeR`, contrastando los resultados obtenidos al utilizar diversas estrategias de cuantificación y arquitecturas de secuenciación.
+
+## Objetivos específicos
+
+- Evaluar los perfiles de expresión diferencial empleando tablas de conteos derivadas de alineamientos clásicos basados en el genoma (`HISAT2` y `STAR`) frente a cuantificaciones ultrarrápidas basadas en el transcriptoma (`Salmon` procesado con tximport).
+- Analizar el impacto de la estructura de las lecturas mediante la ejecución y comparación independiente de bibliotecas de *single-end* y *paired-end* en los modelos estadísticos.
+- Identificar las divergencias operativas entre `DESeq2` y `edgeR` en términos de sensibilidad, cantidad de genes diferencialmente expresados y normalización bajo los distintos escenarios de preprocesamiento.
+
+# Metodología y Justificación
+
+## 1. Creación de la estructura del proyecto
+
+Para mantener el orden del proyecto, se creó la siguiente estructura.
+```bash
+cd /home/hectorjl/4to/transcriptomica
+cd DE_analysis
+mkdir -p results/{hisat2,star}/DE_analysis/{DESeq2,edgeR}/{single_end,paired_end}
+```
+
+## 2. Creación de la tabla de conteos global
+
+Para combinar las tablas de `featureCounts` generadas con anterioridad, se creó en `R` un *script* para esa finalidad.
+Se usó: `vim src/combine.R`
+```r
+# Se realizó el parseo de los argumentos
+args <- commandArgs(trailingOnly = TRUE)
+dir_hisat_se <- args[[1]]
+dir_hisat_pe <- args[[2]]
+dir_star_se <- args[[3]]
+dir_star_pe <- args[[4]]
+
+
+# Se usó el "glob pattern" para encontrar todos los archivos
+paths_hisat_se <- Sys.glob(paste(dir_hisat_se, "ft_counts_SRR*.txt", sep = ""))
+paths_hisat_pe <- Sys.glob(paste(dir_hisat_pe, "ft_counts_SRR*.txt", sep = ""))
+paths_star_se <- Sys.glob(paste(dir_star_se, "ft_counts_SRR*.txt", sep = ""))
+paths_star_pe <- Sys.glob(paste(dir_star_pe, "ft_counts_SRR*.txt", sep = ""))
+
+create_combined_table <- function(paths, outdir) {
+    # Se inicializó un par de listas
+    list_col7 <- list()
+    names <- list()
+    
+    # Se obtuvo en "table" la primera columna del primer archivo
+    table <- read.table(paths[1], sep = "\t")
+    # Se retiró el punto y número después de la identificación del ID
+    table <- gsub("\\.[0-9]", "", table$V1[-1])
+    
+  # Se iteró por cada archivo de paths
+    for (i in 1:length(paths)) {
+        # Se leyó y se obtuvo la séptima columna
+        df <- read.table(file = paths[i], sep = "\t")$V7
+        # Se sustituyó para solo obtener el ID del SRR
+        df[1] <- gsub(".bam", "", gsub(".*SRR", "SRR", df[1]))
+        # Se guardó en "name" el SRR
+        name <- df[1]
+        # Se guardó en la lista el nombre
+        names <- append(names, name)
+        
+        # Se obtuvo el df empezando desde la segunda fila
+        col7 <- df[-1]
+        # Se añadió a la lista la columna obtenida
+        list_col7 <- append(list_col7, list(col7))
+    }
+    
+    # Se transformó a un data.frame la lista de columnas
+    final_table <- as.data.frame(list_col7)
+    # Se añadió la columna de Geneid a la tabla final
+    final_table <- cbind(table = table, final_table)
+    # Se renombraron las columnas para reflejar el Geneid y los SRR
+    colnames(final_table) <- c("Geneid", names)
+    
+    # Se guardó la tabla en el mismo path de donde provienen los archivos
+    write.table(
+        final_table,
+        sep = "\t",
+        quote = FALSE,
+        row.names = FALSE,
+        file = paste(outdir, "feature_counts_global.tsv", sep = "")
+    )
+}
+
+# Se llamó a la función para cada estado
+create_combined_table(paths_hisat_se, dir_hisat_se)
+create_combined_table(paths_hisat_pe, dir_hisat_pe)
+create_combined_table(paths_star_se, dir_star_se)
+create_combined_table(paths_star_pe, dir_star_pe)
+
+print("Hecho.")
+```
+Después se ejecutó el *script*:
+```bash
+Rscript src/combine.R results/hisat2/feature_counts/single_end/ results/hisat2/feature_counts/paired_end/ results/star/feature_counts/single_end/ results/star/feature_counts/paired_end/
+```
+
+## 3. Preparación de archivos
+
+Para el análisis de expresión diferencial, se deben generar nuevos archivos o modificar los existentes.
+
+Por lo tanto, se procesó cada archivo de *feature_counts* para que los nombres de las columnas reflejen la condición de la cual provienen. Este procesamiento se realizó en `bash` y se usó *brace expansion*:
+```bash
+# Por cada archivo en la ruta
+# Procesa cada archivo con sed
+# Busca los SRR previos en los metadatos
+# Extrae age, sex, SRR
+# Elimina carriage returns
+# Procesa con awk, asigna "m" para "male"
+# "f" para "female"
+# Usa gsub para eliminar espacios en el campo 3
+# Imprime "campo3"_"sex"m_"count"
+# Fin del bucle
+for file in results/{hisat2,star}/feature_counts/{single_end,paired_end}/*global.tsv; do
+  sed -i "1{$(
+    grep -f data/GSE_metadata/hector_bone_3_vs_24_srr.txt \
+         data/GSE_metadata/GSE132040_MACA_Bulk_metadata.csv \
+    | cut -d "," -f5,7,11 \
+    | tr -d '\r' \
+    | awk -F"," '{
+        sex = ($2 == "m") ? "male" : "female"
+        gsub(/[[:space:]]/, "", $3)
+        count++
+        printf "s/%s[^[:space:]]*/%s_%sm_%s/;", $3, sex, $1, count
+      }'
+  )}" "$file"
+done
+```
+
+El siguiente archivo se generó; contiene dos columnas: *Geneid* y *Length*. Se obtuvo con el siguiente comando en `bash` y se guardó en `data/gencode.vM36`:
+```bash
+# Imprime la primera(Geneid) y sexta(Length) columna
+# Retira la línea que muestra la llamada original del programa
+# Lo guarda en data/gencode.vM36
+awk -v OFS="\t" '{print $1, $6}' results/hisat2/feature_counts/paired_end/ft_counts_SRR9126859.txt | grep -v "#" > data/gencode.vM36/gencode.vM36.gene_id.length.tsv
+```
+
+Por último, se generó un archivo que contiene las columnas *Geneid* y *gene_name*, creado con el siguiente comando en `bash` y guardado en `data/gencode.vM36`:
+```bash
+# Descarga del GTF directamente de la página de GENCODE
+# Release M36 (GRCm39) -> Comprehensive gene annotation
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M36/gencode.vM36.chr_patch_hapl_scaff.annotation.gtf.gz -o data/gencode.vM36/gencode.vM36.chr_patch_hapl_scaff.annotation.gtf
+
+# Descompresión del archivo
+gunzip data/gencode.vM36/gencode.vM36.chr_patch_hapl_scaff.annotation.gtf
+
+# Imprime el GTF
+# Busca en la columna 3 a "gene"
+# Extrae gene_id y gene_name
+# Ordena por pares "- -" separados por tabuladores
+# Redirige a un archivo
+cat gencode.vM36.chr_patch_hapl_scaff.annotation.gtf | awk '$3 == "gene"' | grep -oP 'gene_id "\K[^"]+|gene_name "\K[^"]+' | paste -d'\t' - - > data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt
+```
+
+## 4. Procesamiento de Expresión Diferencial con DESeq2 
+Se siguió la guía de comandos vista en clase y se elaboró un *script* en R para analizar los datos tanto de `HISAT2` y `STAR` como los datos de `Salmon`.
+Se ejecutó el siguiente comando para crear el *script*: `vim src/DEA_DESeq2.R`:
+```R
+# Comentario
+## Documentación
+
+###
+# Uso: Rscript DEA_DESeq2.R <gene_counts_or_txi_file> <annotacion_file> <gene_map_file> <result_dir> 
+###
+
+# Desactiva el dispositivo PDF
+## Evita generar archivos fuera de los indicados
+pdf(file = NULL)
+
+# Carga de las librerías necesarias para el análisis
+# Suprime Warnings para una salida stdout más limpia
+suppressWarnings(
+    suppressPackageStartupMessages({
+        library(DESeq2)
+        library(ggplot2)
+        library(ComplexHeatmap)
+        library(dplyr)
+        library(tibble)
+        library(edgeR)
+        library(circlize)
+        library(optparse)
+    })
+)
+
+# Genera un parseador
+parser <- list(
+    # Obtiene el path de counts o txi
+    make_option(
+        "--counts",
+        type = "character"
+    ),
+    # Obtiene el path del archivo de anotación
+    make_option(
+        "--annotation",
+        type = "character"
+    ),
+    # Obtiene el path del archivo gene_map (Geneid - gene_name) 
+    make_option(
+        "--gene_map",
+        type = "character"
+    ),
+    # Obtiene el path de la carpeta resultados
+    make_option(
+        "--results_dir",
+        type = "character"
+    ),
+    # Bandera para diferenciar si se procesará un objeto txi
+    # o una tabla de conteos
+    make_option(
+        "--from_pseudoalignment",
+        action = "store_true",
+        default = FALSE
+    )
+)
+
+# Parsea el objeto para ser accedido por índice
+args <- parse_args(OptionParser(option_list = parser))
+
+# Obten los argumentos del paseo de la CLI
+gene_counts_or_txi_path <- args$counts
+annotacion_file_path <- args$annotation
+gene_name_map_file_path <- args$gene_map
+results_files_dir <- args$results_dir
+from_pseudoalignment <- args$from_pseudoalignment
+
+## Para el path de "results" elimina si encuentra a un "/"
+## y agrega un "/", asegurando una única aparición 
+results_files_dir <- gsub("/*$", "/", results_files_dir)
+
+# Lee los archivos de anotación y del genemap
+annotation <- read.delim(annotacion_file_path, row.names=1)
+gene_name_map <- read.delim(gene_name_map_file_path, header=FALSE, row.names=1)
+
+# Secuencia ordenada de cabeceras de los datos en procesamiento
+#!
+reordered <- c("male_24m_1", "male_24m_2", "male_24m_4", "male_24m_7",
+                "male_3m_3", "male_3m_5", "male_3m_6")
+
+# Si es un objeto txi
+if (from_pseudoalignment) {
+    # Lee el objeto txi
+    gene_counts_or_txi <- readRDS(gene_counts_or_txi_path)
+    # Registra el nombre de cada SRR respecto a la condición
+    #!
+    condition <- c("male_24m_2", "male_24m_1", "male_3m_5", "male_24m_7", "male_3m_6", "male_3m_3", "male_24m_4")
+    # Renombra los nombres de las columnas
+    colnames(gene_counts_or_txi$abundance) <- condition
+    colnames(gene_counts_or_txi$counts) <- condition
+    colnames(gene_counts_or_txi$length) <- condition
+    # Reordena las columnas por edad
+    gene_counts_or_txi$abundance <- gene_counts_or_txi$abundance[ ,reordered]
+    gene_counts_or_txi$counts <- gene_counts_or_txi$counts[ ,reordered]
+    gene_counts_or_txi$length <- gene_counts_or_txi$length[ ,reordered]
+} else { # Si es una tabla de conteos
+    # Lee el archivo de conteos
+    gene_counts_or_txi <- read.delim(gene_counts_or_txi_path, row.names=1)
+    # Reordena las columnas por edad
+    gene_counts_or_txi <- gene_counts_or_txi[ ,reordered]
+}
+
+# Generar la tabla de metadatos
+# Verifica con colnames(gene_counts_or_txi), comprueba la cabecera de los archivos
+## Para estos archivos es:
+## "male_24m_1" "male_24m_2" "male_24m_4" "male_24m_7" "male_3m_3"  "male_3m_5"  "male_3m_6"
+## Por cual, primero crea un factor con el mismo orden que la cabecera en "age"
+age <- factor(c(rep("m24", 4), rep("m3", 3)),
+    levels = c("m3", "m24"))
+## Al igual que otro por "sex" siguiendo la cabecera de "sex"
+sex <- factor(c(rep("male", 7)))
+## Además, un factor que por color refleje a cual de los cuatro grupos pertencen
+## lightblue <- male_3m
+## blue <- male_24m
+sample_color <- c(rep("blue", 4), rep("lightblue", 3))
+# Si es un objeto txi
+if (from_pseudoalignment) {
+    ## Por último los colnames() 
+    sample_names <- colnames(gene_counts_or_txi$counts)
+} else { # Si es una tabla de conteos
+    ## Por último los colnames() 
+    sample_names <- colnames(gene_counts_or_txi)
+}
+# Con los valores anteriores genera la tabla de metadatos
+meta_data <- data.frame(sample_names, age, sex)
+## Genera
+##   sample_names age  sex
+## 1   male_24m_1 m24 male
+## 2   male_24m_2 m24 male
+## 3   male_24m_4 m24 male
+## 4   male_24m_7 m24 male
+## 5    male_3m_3  m3 male
+## 6    male_3m_5  m3 male
+## 7    male_3m_6  m3 male
+# Elimina la columna "sample_names", pero usa su contenido
+# como nombre de filas
+meta_data <- meta_data %>% 
+        remove_rownames %>% 
+        column_to_rownames(var="sample_names") 
+## Genera
+##            age  sex
+## male_24m_1 m24 male
+## male_24m_2 m24 male
+## male_24m_4 m24 male
+## male_24m_7 m24 male
+## male_3m_3   m3 male
+## male_3m_5   m3 male
+## male_3m_6   m3 male
+
+# Verifica que en los nombres de columnas en gene_counts_or_txi
+# estén en el mismo orden que los nombres de filas en meta_data
+print("Verificación: colnames(gene_counts_or_txi) == rownames(meta_data)")
+print(ifelse(
+    (all(colnames(gene_counts_or_txi) == rownames(meta_data))),
+    "Ok",
+    "Error"
+))
+
+# Crea un objeto de DESeq2 usando los datos anteriores
+# Usa de diseño de matriz a: ~ 0 + age
+## Usando "~ 0 + age", se usa un modelo de medias de grupo
+## lo cual permite poder crear los contrastes de comparación
+## de manera más fina
+formula <- ~ 0 + age
+
+# Si es un objeto txi
+if (from_pseudoalignment) {
+    # Utiliza la formula para objetos de tximport
+    dds <- DESeqDataSetFromTximport(
+        txi = gene_counts_or_txi, 
+        colData = meta_data, 
+        design = formula
+    )
+} else { # Utiliza la formula para una tabla de conteos
+    dds <- DESeqDataSetFromMatrix(
+        countData = round(gene_counts_or_txi),
+        colData = meta_data,
+        design = formula
+    )
+}
+
+# Crea la matriz de diseño
+design <- model.matrix(formula)
+
+# Muestra genes totales
+print("Genes totales:")
+print(length(rownames(dds)))
+
+# Filtrar los genes con baja expresión
+keep <- filterByExpr(dds, design)
+print("Genes después de filtrado por expresión:")
+print(sum(keep))
+# Selecciona solo los genes que pasan el filtro
+dds <- dds[keep, ]
+# Elimina el filtro por uso de memoria
+rm(keep)
+
+## Se creará el PCA plot, para ello se debe 
+## convertir los datos a vst
+# Convierte a vst
+vsd <- vst(dds)
+# Genera el PCA plot
+PCA_plot <- plotPCA(vsd, intgroup = "age") +  
+    theme_minimal(base_size = 18, base_line_size = 1)
+
+# Guarda el gráfico de PCA
+ggsave(filename = paste(results_files_dir, "plots/PCA_plot.png", sep = ""), 
+    plot = PCA_plot, 
+    dpi = 300, 
+    width = 11.25, 
+    height = 7.5,
+    create.dir = TRUE
+)
+
+# Calcula los factores de normalización,
+# varianza y ajusta el modelo
+dds <- DESeq(dds)
+
+## Se calcularon los TPM, una métrica importante pero no indispensable
+# Añade la longitud de los genes
+mcols(dds)$basepairs <- annotation[rownames(dds), ]
+# Calcula el log_2 FPKM
+## Se añadió un pseudo conteo para evitar log2(0)
+log2_fpkm <- log2(fpkm(dds) + 0.1)
+# Función, convierte de FPKM a log2(TPM)
+fpkm_to_tpm_log2 <- function(fpkm) {
+    fpkm - log2(sum(2^fpkm)) + log2(1e6)
+} 
+# Aplica la función por columnas (2)
+log2_tmp <- apply(log2_fpkm, 2, fpkm_to_tpm_log2)
+# Guarda en una tabla
+gene_names <- gene_name_map[rownames(log2_tmp), ]
+write.table(
+    cbind(
+        gene_names,
+        log2_tmp
+    ),
+    file = paste(results_files_dir, "TPM_log2-table.txt", sep = ""),
+    sep = "\t",
+    quote = FALSE
+)
+
+## Se realizaron los contrastes de expresión diferencial
+# Imprime nombres disponibles para los contrastes
+print("Nombres disponibles para contrastes:")
+print(resultsNames(dds))
+
+# Crea el contraste
+contrasts <- makeContrasts(m24_vs_m3 = agem24 - agem3,
+    levels = design
+)
+
+# Realiza el análisis de expresión diferencial
+## En este caso al ser solo uno es directo
+## Se usa el contraste comparando agem24 vs agem3
+res <- results(dds, contrast = contrasts[ ,"m24_vs_m3"])
+# Añade Gene name
+res$Gene_name <- gene_name_map[rownames(res), ]
+
+# Fija los umbrales de "Log Fold Change" y "False Discovery Rate"
+FDR <- 5e-2 # 0.05 FDR
+LogFC <- 0.5
+
+# Obtiene los genes "upregulated" y "downregulated"
+up <- (res$log2FoldChange > LogFC) & (res$padj < FDR)
+# Elimina los NA
+up[which(is.na(up))] <- FALSE
+# Imprimir los "upregulated"
+cat("Upregulated: ", sum(up), "\n")
+
+down <- (res$log2FoldChange < -LogFC) & (res$padj < FDR)
+# Elimina los NA
+down[which(is.na(down))] <- FALSE
+cat("Downregulated: ", sum(down), "\n")
+
+# Guardar las tablas para "up" y "down" regulated
+write.table(
+    res[up, ],
+    paste(results_files_dir, "deseq-DEG-up", 
+        FDR, 
+        ".txt", 
+        sep =""
+    ),
+    sep = "\t",
+    quote = FALSE,
+    row.names = T
+)
+write.table(
+    res[down, ],
+    paste(results_files_dir, "deseq-DEG-down", 
+        FDR, 
+        ".txt", 
+        sep = ""
+    ),
+    sep = "\t",
+    quote = FALSE,
+    row.names = T
+)
+
+# Forma el "volcano plot"
+# Asigna colores
+volcano_plot_colors <- c("gray", "blue", "red")
+names(volcano_plot_colors) <- c("NO", "DOWN", "UP")
+
+# Añade la columna DE
+res$DE <- "NO"
+res[up, "DE"] <- "UP"
+res[down, "DE"] <- "DOWN"
+
+volcano_plot <- ggplot(
+    data = res,
+    aes(x = log2FoldChange, y = -log10(padj), col = DE)
+) +
+    geom_point() +
+    labs(
+        title = "Volcano plot",
+        x = "log2 Expression fold change", 
+        y = "-log10 FDR"
+    ) + 
+    scale_color_manual(values = volcano_plot_colors) +
+    geom_vline(
+        xintercept = c(-LogFC, LogFC),
+        col = "black",
+        linetype = "longdash"
+    ) +
+    geom_hline(
+        yintercept = -log10(FDR),
+        col = "black",
+        linetype = "longdash"
+    ) +
+    theme_minimal(
+        base_size = 18,
+        base_line_size = 1
+    )
+# Guarda el gráfico de volcán
+ggsave(filename = paste(results_files_dir, "plots/vulcano_plot.png", sep = ""), 
+    plot = volcano_plot, 
+    dpi = 300, 
+    width = 11.25, 
+    height = 7.5,
+    create.dir = TRUE
+)
+
+# Formar el heatmap
+# Obtiene genes "up" o "down" *regulated*
+significant <- res[up | down, ]
+# Ordena por FDR
+significant_order <- significant[order(significant$padj), ]
+# Toma los primeros 2000
+significant <- head(rownames(significant_order), n = 2000)
+# Calcula el z-score
+z_score_significant <- t(scale(t(log2_tmp[significant, ])))
+
+# Reordena las muestras por edad
+age_order <- order(meta_data$age)
+# Reordena z-score según la edad
+z_score_significant_ordered <- z_score_significant[, age_order]
+
+# Plotea
+heatmap_plot <- Heatmap(
+    z_score_significant,
+    cluster_rows = TRUE,
+    cluster_columns = FALSE, 
+    show_row_names = FALSE,
+    name = "Z score",
+    km = 2,
+    column_title = "Heatmap all",
+    column_labels = colnames(z_score_significant_ordered),
+    col = colorRamp2(c(-2, -1, 0, 1, 2), 
+        c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
+)
+# Guarda el mapa de calor
+png(paste(results_files_dir, "plots/heatmap_all.png", sep = ""), 
+    width = 11.25, height = 7.5, res = 300, units = "in")
+draw(heatmap_plot)
+dev.off()
+
+# Formar Heatmap top20
+significant <- head(rownames(significant_order), n = 20)
+z_score_top_20 <- t(scale(t(log2_tmp[significant, ])))
+top_20_heatmap <- Heatmap(
+    z_score_top_20,
+    cluster_rows = T, 
+    cluster_columns = F, 
+    row_labels = gene_name_map[rownames(z_score_top_20), ], 
+    name = "Z-score", 
+    km = 2, 
+    column_title = "Top 20 significant genes",
+    col = colorRamp2(c(-2, -1, 0, 1, 2), 
+        c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
+)
+# Guarda el mapa de calor
+png(paste(results_files_dir, "plots/heatmap_top20.png", sep = ""), 
+    width = 11.25, height = 7.5, res = 300, units = "in")
+draw(top_20_heatmap)
+dev.off()
+
+# Cierra dispositivos gráficos
+graphics.off()
+```
+
+Dado el rasgo de poder ser ejecutado por **CLI** cada set de archivos se tuvo que ejecutar de manera separada.
+Por lo cual se ejecutó lo siguiente desde la **CLI**:
+```bash
+### DESeq2
+# hisat2
+Rscript src/DEA_DESeq2.R --counts results/hisat2/feature_counts/single_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/hisat2/DE_analysis/DESeq2/single_end
+Rscript src/DEA_DESeq2.R --counts results/hisat2/feature_counts/paired_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/hisat2/DE_analysis/DESeq2/paired_end
+
+# star
+Rscript src/DEA_DESeq2.R --counts results/star/feature_counts/single_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/star/DE_analysis/DESeq2/single_end
+Rscript src/DEA_DESeq2.R --counts results/star/feature_counts/paired_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/star/DE_analysis/DESeq2/paired_end
+# salmon
+Rscript src/DEA_DESeq2.R --counts results/salmon/tximport/single_end/gene_ab.rds \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/salmon/DE_analysis/DESeq2/single_end --from_pseudoalignment
+Rscript src/DEA_DESeq2.R --counts results/salmon/tximport/paired_end/gene_ab.rds \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/salmon/DE_analysis/DESeq2/paired_end --from_pseudoalignment
+```
+
+## 5. Procesamiento de Expresión Diferencial con edgeR
+Se buscó que el enfoque con `edgeR` fuera lo más similar posible a `DESeq2` para poder hacer una comparación en las mismas condiciones, pero con un programa diferente.
+De igual manera el *script* fue enfocado en no duplicar código, fácilmente ejecutable, escalable y con la idea de tener cambios mínimos al código fuente en diferentes sets.
+Se ejecutó: `vim src/DEA_EdgeR.R`:
+```R
+# Comentario
+## Documentación
+
+###
+# Uso: Rscript DEA_DESeq2.R <gene_counts_or_txi_file> <annotacion_file> <gene_map_file> <result_dir> 
+###
+
+# Desactiva el dispositivo PDF
+## Evita generar archivos fuera de los indicados
+pdf(file = NULL)
+
+# Carga de las librerías necesarias para el análisis
+# Suprime Warnings para una salida stdout más limpia
+suppressWarnings(
+    suppressPackageStartupMessages({
+        library(ggplot2)
+        library(ComplexHeatmap)
+        library(dplyr)
+        library(tibble)
+        library(edgeR)
+        library(circlize)
+        library(optparse)
+    })
+)
+
+# Genera un parseador
+parser <- list(
+    # Obtiene el path de counts o txi
+    make_option(
+        "--counts",
+        type = "character"
+    ),
+    # Obtiene el path del archivo de anotación
+    make_option(
+        "--annotation",
+        type = "character"
+    ),
+    # Obtiene el path del archivo gene_map (Geneid - gene_name) 
+    make_option(
+        "--gene_map",
+        type = "character"
+    ),
+    # Obtiene el path de la carpeta resultados
+    make_option(
+        "--results_dir",
+        type = "character"
+    ),
+    # Bandera para diferenciar si se procesara un objeto txi
+    # o una tabla de conteos
+    make_option(
+        "--from_pseudoalignment",
+        action = "store_true",
+        default = FALSE
+    )
+)
+
+# Parsea el objeto para ser accedido por índice
+args <- parse_args(OptionParser(option_list = parser))
+
+# Obten los argumentos del paseo de la CLI
+gene_counts_or_txi_path <- args$counts
+annotacion_file_path <- args$annotation
+gene_name_map_file_path <- args$gene_map
+results_files_dir <- args$results_dir
+from_pseudoalignment <- args$from_pseudoalignment
+
+## Para el path de "results" elimina si encuentra a un "/"
+## y agrega un "/", asegurando una única aparición 
+results_files_dir <- gsub("/*$", "/", results_files_dir)
+
+# Lee los archivos de anotación y del genemap
+annotation <- read.delim(annotacion_file_path, row.names=1)
+gene_name_map <- read.delim(gene_name_map_file_path, header=FALSE, row.names=1)
+
+# Secuencia ordenada de cabeceras de los datos en procesamiento
+#!
+reordered <- c("male_24m_1", "male_24m_2", "male_24m_4", "male_24m_7",
+"male_3m_3", "male_3m_5", "male_3m_6")
+
+# Si es un objeto txi
+if (from_pseudoalignment) {
+    # Lee el objeto txi
+    gene_counts_or_txi <- readRDS(gene_counts_or_txi_path)
+    # Registra el nombre de cada SRR respecto a la condición
+    #!
+    condition <- c("male_24m_2", "male_24m_1", "male_3m_5", "male_24m_7", "male_3m_6", "male_3m_3", "male_24m_4")
+    # Renombra los nombres de las columnas  
+    colnames(gene_counts_or_txi$abundance) <- condition
+    colnames(gene_counts_or_txi$counts) <- condition
+    colnames(gene_counts_or_txi$length) <- condition
+    # Reordena las columnas por edad
+    gene_counts_or_txi$abundance <- gene_counts_or_txi$abundance[ ,reordered]
+    gene_counts_or_txi$counts <- gene_counts_or_txi$counts[ ,reordered]
+    gene_counts_or_txi$length <- gene_counts_or_txi$length[ ,reordered]
+} else { # Si es una tabla de conteos
+    # Lee el archivo de conteos
+    gene_counts_or_txi <- read.delim(gene_counts_or_txi_path, row.names=1)
+    # Reordena las columnas por edad
+    gene_counts_or_txi <- gene_counts_or_txi[ ,reordered]
+}
+
+# Generar la tabla de metadatos
+# Verifica con colnames(gene_counts_or_txi), comprueba la cabecera de los archivos
+## Para estos archivos es:
+## "male_24m_1" "male_24m_2" "male_24m_4" "male_24m_7" "male_3m_3"  "male_3m_5"  "male_3m_6"
+## Por cual, primero crea un factor con el mismo orden que la cabecera en "age"
+age <- factor(c(rep("m24", 4), rep("m3", 3)),
+    levels = c("m3", "m24"))
+## Al igual que otro por "sex" siguiendo la cabecera de "sex"
+sex <- factor(c(rep("male", 7)))
+## Además, un factor que por color refleje a cual de los cuatro grupos pertencen
+## lightblue <- male_3m
+## blue <- male_24m
+sample_color <- c(rep("blue", 4), rep("lightblue", 3))
+# Si es un objeto txi
+if (from_pseudoalignment) {
+    ## Por último los colnames() 
+    sample_names <- colnames(gene_counts_or_txi$counts)
+} else { # Si es una tabla de conteos
+    ## Por último los colnames() 
+    sample_names <- colnames(gene_counts_or_txi)
+}
+# Con los valores anteriores genera la tabla de metadatos
+meta_data <- data.frame(sample_names, age, sex)
+## Genera
+##   sample_names age  sex
+## 1   male_24m_1 m24 male
+## 2   male_24m_2 m24 male
+## 3   male_24m_4 m24 male
+## 4   male_24m_7 m24 male
+## 5    male_3m_3  m3 male
+## 6    male_3m_5  m3 male
+## 7    male_3m_6  m3 male
+# Elimina la columna "sample_names", pero usa su contenido
+# como nombre de filas
+meta_data <- meta_data %>% 
+        remove_rownames %>% 
+        column_to_rownames(var="sample_names") 
+## Genera
+##            age  sex
+## male_24m_1 m24 male
+## male_24m_2 m24 male
+## male_24m_4 m24 male
+## male_24m_7 m24 male
+## male_3m_3   m3 male
+## male_3m_5   m3 male
+## male_3m_6   m3 male
+
+# Verifica que en los nombres de columnas en gene_counts_or_txi
+# estén en el mismo orden que los nombres de filas en meta_data
+print("Verificación: colnames(gene_counts_or_txi) == rownames(meta_data)")
+print(ifelse(
+    (all(colnames(gene_counts_or_txi) == rownames(meta_data))),
+    "Ok",
+    "Error"
+))
+
+# Crea un objeto de edgeR usando los datos anteriores
+# Usa de diseño de matriz a: ~ 0 + age
+## Usando "~ 0 + age", se usa un modelo de medias de grupo
+## lo cual permite poder crear los contrastes de comparación
+## de manera más fina
+formula <- ~ 0 + age
+
+# Si es un objeto txi
+if (from_pseudoalignment) {
+    # Crea un objeto DGE utilizando los conteos del objeto txi
+    dge <- DGEList(counts = gene_counts_or_txi$counts)
+    # Corrige los conteos dada la longitud
+    # Crea un factor de normalización
+    normalized_factor <- gene_counts_or_txi$length / exp(
+        rowMeans(log(gene_counts_or_txi$length))
+    )
+    # Normaliza los conteos dado el factor de normalización
+    normalized_counts <- gene_counts_or_txi$counts / normalized_factor
+    # Calcula el tamaño efectivo de la libreria
+    effective_library_size <- calcNormFactors(normalized_counts) * colSums(normalized_counts)
+    # Aplica el factor de normalización a la libreria
+    normalized_factor <- sweep(normalized_factor, 2, effective_library_size, "*")
+    
+    # Agrega los conteos normalizados aplicado en log
+    dge$offset <- log(normalized_factor)
+} else { # Si es una tabla de conteos
+    dge <- DGEList(counts = round(gene_counts_or_txi))
+}
+
+# Crea la matriz de diseño
+design <- model.matrix(formula)
+
+# Muestra genes totales
+print("Genes totales:")
+print(nrow(dge))
+
+# Filtrar los genes con baja expresión
+keep <- filterByExpr(dge, design, min.count = 20)
+print("Genes después de filtrado por expresión:")
+print(sum(keep))
+# Selecciona solo los genes que pasan el filtro
+dge <- dge[keep, , keep.lib.sizes = FALSE]
+# Elimina el filtro por uso de memoria
+rm(keep)
+
+# Si es una tabla de conteos
+if (!(from_pseudoalignment)) {
+    # Normaliza los conteos
+    dge <- calcNormFactors(dge, method = "TMM")
+}
+
+## Se creará el PCA plot usando logCPM
+log_cpm <- cpm(dge, log = TRUE, prior.count = 1)
+pca_res <- prcomp(t(log_cpm), scale. = TRUE)
+pca_df <- data.frame(
+    PC1 = pca_res$x[, 1],
+    PC2 = pca_res$x[, 2],
+    age = meta_data$age
+)
+# Genera el PCA plot
+PCA_plot <- ggplot(pca_df, aes(x = PC1, y = PC2, color = age)) +
+    geom_point(size = 3) +
+    theme_minimal(base_size = 18, base_line_size = 1)
+# Guarda el gráfico de PCA
+ggsave(filename = paste(results_files_dir, "plots/PCA_plot.png", sep = ""), 
+    plot = PCA_plot, 
+    dpi = 300, 
+    width = 11.25, 
+    height = 7.5,
+    create.dir = TRUE
+)
+
+# Estima la dispersión y ajusta el modelo
+dge <- estimateDisp(dge, design, robust = TRUE)
+# Utiliza glmFit para ser comparable a DESeq2
+fit <- glmFit(dge, design, robust = TRUE)
+
+## Se calcularon los TPM, una métrica importante pero no indispensable
+# Añade la longitud de los genes 
+gene_lengths <- annotation[rownames(dge), ]
+# Calcula el log_2 RPKM
+## Se añadió un pseudo conteo para evitar log2(0)
+log2_rpkm <- log2(rpkm(dge, gene.length = gene_lengths) + 0.1)
+# Función, convierte de fpkm a log2(tmp)
+fpkm_to_tpm_log2 <- function(fpkm) {
+    fpkm - log2(sum(2^fpkm)) + log2(1e6)
+} 
+# Aplica la función por columnas (2)
+log2_tmp <- apply(log2_rpkm, 2, fpkm_to_tpm_log2)
+# Guarda en una tabla
+gene_names <- gene_name_map[rownames(log2_tmp), ]
+write.table(
+    cbind(
+        gene_names,
+        log2_tmp
+    ),
+    file = paste(results_files_dir, "TPM_log2-table.txt", sep = ""),
+    sep = "\t",
+    quote = FALSE
+)
+
+## Se realizó los contrastes de expresión diferencial
+# Imprime nombres disponibles para los contrastes
+print("Nombres disponibles para contrastes:")
+print(colnames(design))
+
+# Crea el contraste
+contrasts <- makeContrasts(m24_vs_m3 = agem24 - agem3,
+    levels = design
+)
+
+# Realiza el análisis de expresión diferencial
+## En este caso al ser solo uno es directo
+## Se usa el contraste comparando agem24 vs agem3
+# Utiliza glmLRT para ser comparable con DESeq2
+glm_LRT <- glmLRT(fit, contrast = contrasts[, "m24_vs_m3"])
+# Obten los genes más expresados diferencialmente
+## Evitando el castigo por muchos genes en el FDR
+res <- topTags(glm_LRT, n = Inf, sort.by = "none")$table
+# Añade Gene name
+res$Gene_name <- gene_name_map[rownames(res), ]
+
+# Fija los umbrales de "Log Fold Change" y "False Discovery Rate"
+FDR <- 5e-2 # 0.05 FDR
+LogFC <- 0.5
+
+# Obten los genes "upregulated" y "downregulated"
+up <- (res$logFC > LogFC) & (res$FDR < FDR)
+# Elimina los NA
+up[which(is.na(up))] <- FALSE
+# Imprimir los "upregulated"
+cat("Upregulated: ", sum(up), "\n")
+
+down <- (res$logFC < -LogFC) & (res$FDR < FDR)
+# Elimina los NA
+down[which(is.na(down))] <- FALSE
+cat("Downregulated: ", sum(down), "\n")
+
+# Guardar las tablas para "up" y "down" regulated
+write.table(
+    res[up, ],
+    paste(results_files_dir, "deseq-DEG-up", 
+        FDR, 
+        ".txt", 
+        sep =""
+    ),
+    sep = "\t",
+    quote = FALSE,
+    row.names = T
+)
+write.table(
+    res[down, ],
+    paste(results_files_dir, "deseq-DEG-down", 
+        FDR, 
+        ".txt", 
+        sep = ""
+    ),
+    sep = "\t",
+    quote = FALSE,
+    row.names = T
+)
+
+# Forma el "volcano plot"
+# Asigna colores
+volcano_plot_colors <- c("gray", "blue", "red")
+names(volcano_plot_colors) <- c("NO", "DOWN", "UP")
+
+# Añade la columna DE
+res$DE <- "NO"
+res[up, "DE"] <- "UP"
+res[down, "DE"] <- "DOWN"
+
+volcano_plot <- ggplot(
+    data = res,
+    aes(x = logFC, y = -log10(FDR), col = DE)
+) +
+    geom_point() +
+    labs(
+        title = "Volcano plot",
+        x = "log2 Expression fold change", 
+        y = "-log10 FDR"
+    ) + 
+    scale_color_manual(values = volcano_plot_colors) +
+    geom_vline(
+        xintercept = c(-LogFC, LogFC),
+        col = "black",
+        linetype = "longdash"
+    ) +
+    geom_hline(
+        yintercept = -log10(FDR),
+        col = "black",
+        linetype = "longdash"
+    ) +
+    theme_minimal(
+        base_size = 18,
+        base_line_size = 1
+    )
+# Guarda el gráfico de volcán
+ggsave(filename = paste(results_files_dir, "plots/vulcano_plot.png", sep = ""), 
+    plot = volcano_plot, 
+    dpi = 300, 
+    width = 11.25, 
+    height = 7.5,
+    create.dir = TRUE
+)
+
+# Formar el Heatmap
+# Obten genes "up" o "down" *regulated*
+significant <- res[up | down, ]
+# Ordena por FDR
+significant_order <- significant[order(significant$FDR), ]
+# Toma los primeros 2000
+significant <- head(rownames(significant_order), n = 2000)
+# Calcula el z-score
+z_score_significant <- t(scale(t(log2_tmp[significant, ])))
+
+# Reordena las muestras por edad
+age_order <- order(meta_data$age)
+# Reordena z-score según la edad
+z_score_significant_ordered <- z_score_significant[, age_order]
+
+# Plotea
+heatmap_plot <- Heatmap(
+    z_score_significant,
+    cluster_rows = TRUE,
+    cluster_columns = FALSE, 
+    show_row_names = FALSE,
+    name = "Z score",
+    km = 2,
+    column_title = "Heatmap all",
+    column_labels = colnames(z_score_significant_ordered),
+    col = colorRamp2(c(-2, -1, 0, 1, 2), 
+        c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
+)
+# Guarda el mapa de calor
+png(paste(results_files_dir, "plots/heatmap_all.png", sep = ""), 
+    width = 11.25, height = 7.5, res = 300, units = "in")
+draw(heatmap_plot)
+dev.off()
+
+# Formar Heatmap top20
+significant <- head(rownames(significant_order), n = 20)
+z_score_top_20 <- t(scale(t(log2_tmp[significant, ])))
+top_20_heatmap <- Heatmap(
+    z_score_top_20,
+    cluster_rows = T, 
+    cluster_columns = F, 
+    row_labels = gene_name_map[rownames(z_score_top_20), ], 
+    name = "Z-score", 
+    km = 2, 
+    column_title = "Top 20 significant genes",
+    col = colorRamp2(c(-2, -1, 0, 1, 2), 
+        c("#07f900", "#007500", "#000000", "#750b00", "#ff2500"))
+)
+# Guarda el mapa de calor
+png(paste(results_files_dir, "plots/heatmap_top20.png", sep = ""), 
+    width = 11.25, height = 7.5, res = 300, units = "in")
+draw(top_20_heatmap)
+dev.off()
+
+# Cierra dispositivos gráficos
+graphics.off()
+```
+
+Los *script*s tienen cambios mínimos, abriendo la posibilidad de una optimización para un único *script*.
+
+La ejecución se realizó vía **CLI** de manera muy similar al anterior *script*:
+```bash
+### EdgeR
+# hisat2
+Rscript src/DEA_EdgeR.R --counts results/hisat2/feature_counts/single_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/hisat2/DE_analysis/edgeR/single_end
+Rscript src/DEA_EdgeR.R --counts results/hisat2/feature_counts/paired_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/hisat2/DE_analysis/edgeR/paired_end
+
+# star
+Rscript src/DEA_EdgeR.R --counts results/star/feature_counts/single_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/star/DE_analysis/edgeR/single_end
+Rscript src/DEA_EdgeR.R --counts results/star/feature_counts/paired_end/feature_counts_global.tsv \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/star/DE_analysis/edgeR/paired_end
+# salmon
+Rscript src/DEA_EdgeR.R --counts results/salmon/tximport/single_end/gene_ab.rds \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/salmon/DE_analysis/edgeR/single_end --from_pseudoalignment
+Rscript src/DEA_EdgeR.R --counts results/salmon/tximport/paired_end/gene_ab.rds \
+        --annotation data/gencode.vM36/gencode.vM36.gene_id.length.tsv --gene_map data/gencode.vM36/mm39-gencode-M36-gene_id-gene_name.txt \
+        --results_dir results/salmon/DE_analysis/edgeR/paired_end --from_pseudoalignment
+```
+
+# Resultados
+
+## Análisis de datos cuantitativos 
+
+Con los archivos generados por los *scripts* se generó la siguiente tabla condensando la cantidad total de genes **upregulated** y **downregulated**. 
+
+| Alineador | Método | Tipo de Lectura | Upregulated | Downregulated | Total |
+| :- | :-: | :-: | :-: | :-: | :-: |
+| **HISAT2** | DESeq2 | Single-end | 48 | 6 | 54 |
+| | DESeq2 | Paired-end | 23 | 7 | 30 |
+| | edgeR | Single-end | 56 | 8 | 64 |
+| | edgeR | Paired-end | 20 | 9 | 29 |
+| **STAR** | DESeq2 | Single-end | 47 | 6 | 53 |
+| | DESeq2 | Paired-end | 36 | 8 | 44 |
+| | edgeR | Single-end | 63 | 8 | 71 |
+| | edgeR | Paired-end | 48 | 8 | 56 |
+| **Salmon** | DESeq2 | Single-end | 47 | 10 | 57 |
+| | DESeq2 | Paired-end | 38 | 10 | 48 |
+| | edgeR | Single-end | 36 | 7 | 43 |
+| | edgeR | Paired-end | 29 | 6 | 35 |
+| | | | | | | 
+| | | Media: | 40.9167 | 7.75 | 48.6667 |
+*Tabla 1. Cantidad de DEGs obtenidos*
+
+
+### Comparación entre Lecturas (Single-end vs. Paired-end)
+
+Se observa una tendencia consistente en la que la versión *single-end* reporta, en la mayoría de los casos, un mayor número de genes diferencialmente expresados en comparación con la versión *paired-end*. Por ejemplo, con `HISAT2-edgeR` se detectaron 64 DEG en *single-end* frente a solo 29 en *paired-end*.
+
+Esta diferencia se debe a que las lecturas *single-end* tienen una mayor flexibilidad en el mapeo al no depender de la concordancia con una pareja. Por el contrario, la secuenciación *paired-end* impone restricciones espaciales (distancia y orientación entre lecturas) que, si bien reducen el número bruto de genes identificados al ser más estrictas, proporcionan una mayor robustez y precisión en la asignación de las lecturas, reduciendo falsos positivos derivados de mapeos ambiguos o regiones repetitivas.
+
+### Comparación entre Métodos (`DESeq2` contra `edgeR`)
+
+Al comparar directamente ambos algoritmos, se observaron diferencias entre distintas categorías:
+
+-- **Identificación de genes:** En los alineadores basados en genoma (`HISAT2` y `STAR`), `edgeR` tiende a ser ligeramente más permisivo o sensible y captura un mayor número total de genes, especialmente los *upregulated*. El máximo se alcanza con *STAR-edgeR* *single-end* (71 genes).
+-- **Consistencia de Salmon**: Resulta interesante que con el pseudoalineador `Salmon`, la tendencia se invierte: `DESeq2` identifica más genes que `edgeR` (57 vs 43 en *single-end*). Esto sugiere que la normalización y el manejo de la incertidumbre de abundancia en `DESeq2` (integrado con `tximport`) podría ser más robusto para datos de transcriptoma crudo en comparación con el algoritmo de `edgeR`.
+-- **Balance:** En ambos métodos se observa una clara inclinación hacia la detección de genes sobreexpresados, con una media de $\approx 41$ genes frente a solo $\approx 8$ subexpresados, lo que indica un perfil de activación génica predominante en las condiciones experimentales comparadas (24 meses vs 3 meses en tejido óseo).
+
+En resumen, mientras que las lecturas *single-end* y el método `edgeR` parecen maximizar el descubrimiento de genes, la combinación de *paired-end* con `DESeq2` ofrece un perfil posiblemente más conservador pero biológicamente más confiable debido a las restricciones de alineación y al modelo estadístico de dispersión. Cabe notar que este resultado está condicionado a la manera en la que el análisis de expresión diferencial se realizó en `edgeR` utilizando el enfoque más parecido a `DESeq2` en los métodos; haber utilizado un método de cuasi-verosimilitud con contracción bayesiana empírica (`glmQLFit`) en `edgeR` habría tenido un efecto inverso al observado en esta comparación, ya que es mucho más conservador.
+
+## Análisis visual
+
+Con las gráficas generadas durante la ejecución de los *scripts* se puede entender de mejor manera cómo están organizados los datos. 
+
+### PCA
+
+Los primeros gráficos que se analizan son los PCA. Aunque son 12 análisis independientes, los PCA se forman de dos maneras diferentes: por logCPM (en `edgeR`) o mediante la transformada con estabilización de la varianza (en `DESeq2`).
+
+
+PCA generado por transformada con estabilización de la varianza (*single end*):
+
+![PCA `Deseq2` single end](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/DESeq2/single_end/plots/PCA_plot.png)
+
+PCA generado por transformada con estabilización de la varianza (*paired end*):
+
+![PCA `Deseq2` paired end](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/DESeq2/paired_end/plots/PCA_plot.png)
+
+Como se puede observar, no existe una gran agrupación definida entre los grupos de edad. Esto es explicable biológicamente, ya que el tejido óseo no sufre cambios tan bruscos entre ambas edades; aun así, se puede imaginar un eje que separa a los grupos (3 meses vs. 24 meses).
+
+Además, resulta notable que no existe diferencia visual entre los datos *single-end* y *paired-end*.
+
+PCA generado por logCPM (*single end*):
+
+![PCA `edgeR` single end](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/edgeR/single_end/plots/PCA_plot.png)
+
+PCA generado por logCPM (*paired end*):
+
+![PCA `edgeR` paired end](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/edgeR/paired_end/plots/PCA_plot.png)
+
+En estos gráficos, la agrupación entre grupos es más difusa aún; aunque un par de datos del grupo de 3 meses se agrupa, los restantes están muy dispersos, lo que nuevamente confirma que el tejido óseo no sufre grandes cambios en una comparación de un ratón de 24 y 3 meses.
+
+### Heatmap de los 20 genes diferencialmente más expresados
+
+Para visualizar la consistencia de los perfiles de expresión entre las muestras de ratones jóvenes (3 meses) y envejecidos (24 meses), se generó un conjunto de mapas de calor (*heatmaps*) con los 20 genes de mayor significancia estadística (menor FDR) para cada una de las 12 combinaciones de análisis. 
+
+Este conjunto de gráficos permite observar no solo la magnitud del cambio (expresada en *Z-score* sobre los valores de abundancia normalizados), sino también la capacidad de cada método para agrupar las muestras según su condición biológica. En todos los casos, se observa una clara partición del transcriptoma que separa las muestras de 24 meses de las de 3 meses en su expresión diferencial, validando la robustez de los DEGs identificados independientemente del flujo de trabajo utilizado.
+
+#### DESeq2
+
+El análisis con **DESeq2** se caracteriza por una contracción de la varianza (*shrinkage*) que prioriza genes con cambios consistentes. A continuación se presenta el resultado para los tres alineadores:
+
+##### *Single end (HISAT2)*
+
+![Perfil de expresión de los top 20 DEGs identificados con HISAT2-DESeq2 en lecturas single-end.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/DESeq2/single_end/plots/heatmap_top20.png)
+
+##### *Paired end (HISAT2)*
+
+![Perfil de expresión de los top 20 DEGs identificados con HISAT2-DESeq2 en lecturas paired-end. Se observa una reducción en el ruido de fondo en comparación con single-end.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/DESeq2/paired_end/plots/heatmap_top20.png)
+
+##### *Single end (STAR)*
+
+![Heatmap de genes significativos usando STAR-DESeq2 (single-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/single_end/plots/heatmap_top20.png)
+
+##### *Paired end (STAR)*
+
+![Heatmap de genes significativos usando STAR-DESeq2 (paired-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/plots/heatmap_top20.png)
+
+##### *Single end (SALMON)*
+
+![Análisis de abundancia de transcritos (Salmon) procesado con DESeq2 (single-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/salmon/DE_analysis/DESeq2/single_end/plots/heatmap_top20.png)
+
+##### *Paired end (SALMON)*
+
+![Análisis de abundancia de transcritos (Salmon) procesado con DESeq2 (paired-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/salmon/DE_analysis/DESeq2/paired_end/plots/heatmap_top20.png)
+
+En el análisis realizado con **DESeq2**, se identifica un conjunto de genes con una alta consistencia a través de los seis flujos de trabajo (HISAT2, STAR y Salmon en ambos tipos de lectura). Entre los genes más recurrentes se encuentran *Acan*, *Ighg2c* y *Rasd2*, que aparecen en la totalidad de las comparaciones y se consolidan como marcadores robustos de la diferencia entre edades. Asimismo, genes relacionados con la matriz extracelular como *Chad*, *Col10a1* y *Col9a3* presentan una recurrencia del 83% (5 de 6), lo cual sugiere que este método prioriza genes con cambios de expresión medianos pero altamente estables y estadísticamente significativos bajo su modelo de dispersión.
+
+#### edgeR
+
+El método **edgeR**, utilizando un enfoque de verosimilitud (LRT) ajustado para ser comparable a DESeq2, tiende a capturar una mayor diversidad de genes, incluyendo algunos con conteos absolutos más bajos pero altas proporciones de cambio.
+
+##### *Single end (HISAT2)*
+
+![Top 20 DEGs detectados por HISAT2-edgeR en lecturas single-end.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/edgeR/single_end/plots/heatmap_top20.png)
+
+##### *Paired end (HISAT2)*
+
+![Top 20 DEGs detectados por HISAT2-edgeR en lecturas paired-end.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/edgeR/paired_end/plots/heatmap_top20.png)
+
+##### *Single end (STAR)*
+
+![Heatmap de la combinación STAR-edgeR (single-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/edgeR/single_end/plots/heatmap_top20.png)
+
+##### *Paired end (STAR)*
+
+![Heatmap de la combinación STAR-edgeR (paired-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/edgeR/paired_end/plots/heatmap_top20.png)
+
+##### *Single end (SALMON)*
+
+![Visualización de los top 20 DEGs obtenidos mediante pseudo-alineación y edgeR (single-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/salmon/DE_analysis/edgeR/single_end/plots/heatmap_top20.png)
+
+##### *Paired end (SALMON)*
+
+![Visualización de los top 20 DEGs obtenidos mediante pseudo-alineación y edgeR (paired-end).](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/salmon/DE_analysis/edgeR/paired_end/plots/heatmap_top20.png)
+
+Por otro lado, el método **edgeR** muestra un perfil ligeramente distinto en su detección de alta frecuencia. En este caso, el gen *Col10a1* se posiciona como el más recurrente junto con fragmentos de inmunoglobulinas (*Ighg2c*, *Igkv3-2* e *Igkv4-55*), todos presentes en las seis ejecuciones. Se observa que *Rasd2* y *Col9a3* mantienen una presencia constante en 5 de los 6 análisis. Es notable que `edgeR` tiende a otorgar una mayor relevancia estadística a genes de la familia de los colágenos y a componentes del sistema inmune, lo que podría derivar de su sensibilidad ante genes con conteos más bajos o una mayor varianza técnica en comparación con `DESeq2`.
+
+#### Comparación de heatmaps
+
+El análisis comparativo revela que el número de genes sobreexpresados es superior al de los subexpresados en todas las metodologías evaluadas. Se observa que el mapeador STAR, en conjunto con `edgeR`, identifica la mayor cantidad de genes con expresión diferencial, alcanzando un total de 71 DEGs en el análisis de lecturas *single-end*. En contraste, el uso de lecturas *paired-end* conlleva una disminución general en el número de genes detectados, lo cual sugiere que la restricción espacial de este tipo de secuenciación aporta una mayor precisión y reduce el hallazgo de falsos positivos.
+
+Asimismo, se nota una discrepancia entre los métodos estadísticos: mientras que `edgeR` tiende a ser más sensible en los flujos de trabajo basados en alineación al genoma (HISAT2 y STAR), `DESeq2` demuestra una mayor capacidad de detección al procesar datos provenientes de Salmon. 
+
+### Gráficos de Volcano 
+
+Con el fin de examinar la distribución de los cambios en la expresión génica y su significancia estadística, se generó un conjunto de gráficos de tipo *volcano*. Este tipo de gráfico permite visualizar la relación entre la magnitud del cambio (log2 Fold Change) en el eje de las abscisas y el valor de significancia estadística (-log10 FDR) en el eje de las ordenadas. 
+
+Debido a que las lecturas de tipo *paired-end* proporcionan una mayor robustez técnica y reducen la tasa de falsos positivos mediante restricciones espaciales, se optó por presentar los resultados correspondientes únicamente a esta arquitectura de secuenciación. En las gráficas, los puntos resaltados en rojo representan genes sobreexpresados (UP), mientras que los puntos azules indican genes subexpresados (DOWN), bajo los umbrales de $|LogFC| > 0.5$ y $FDR < 0.05$.
+
+#### DESeq2
+
+El modelo de **DESeq2** aplica una contracción de los valores de *Fold Change*, lo cual se traduce en una distribución de puntos más compacta en el gráfico, priorizando aquellos genes con una varianza estimada más estable.
+
+##### *Paired end (HISAT2)*
+
+![Distribución de los DEGs identificados mediante HISAT2 y DESeq2.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/DESeq2/paired_end/plots/vulcano_plot.png)
+
+##### *Paired end (STAR)*
+
+![Distribución de los DEGs identificados mediante STAR y DESeq2.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/plots/vulcano_plot.png)
+
+##### *Paired end (SALMON)*
+
+![Distribución de los DEGs identificados mediante Salmon y DESeq2.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/salmon/DE_analysis/DESeq2/paired_end/plots/vulcano_plot.png)
+
+#### edgeR
+
+Por su parte, el enfoque de **edgeR** muestra una sensibilidad distinta, permitiendo observar una mayor dispersión en los genes con menor nivel de expresión, lo que se refleja en una silueta de "volcán" ligeramente más extendida hacia los extremos del cambio de pliegue.
+
+##### *Paired end (HISAT2)*
+
+![Distribución de los DEGs identificados mediante HISAT2 y edgeR.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/hisat2/DE_analysis/edgeR/paired_end/plots/vulcano_plot.png)
+
+##### *Paired end (STAR)*
+
+![Distribución de los DEGs identificados mediante STAR y edgeR.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/edgeR/paired_end/plots/vulcano_plot.png)
+
+##### *Paired end (SALMON)*
+
+![Distribución de los DEGs identificados mediante Salmon y edgeR.](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/salmon/DE_analysis/edgeR/paired_end/plots/vulcano_plot.png)
+
+#### Comparación de gráficos volcano
+
+Se observa visualmente una alta concordancia morfológica entre los gráficos volcano generados por `HISAT2` y `STAR` dentro de sus respectivos grupos de análisis (`DESeq2` o `edgeR`). Una tendencia similar se manifiesta al comparar las salidas de Salmon procesadas con ambos algoritmos estadísticos. No obstante, surge una divergencia notable al contrastar los resultados de los pseudoalineadores frente a los alineadores convencionales, independientemente del modelo de expresión diferencial empleado. Esta observación permite concluir que la etapa de preprocesamiento técnico ejerce una influencia más determinante sobre la topología y distribución de los datos resultantes que la elección del método estadístico final.
+
+# Discusión
+
+El análisis comparativo realizado permite identificar que la arquitectura de las bibliotecas de secuenciación y la elección del algoritmo estadístico ejercen una influencia directa sobre la cuantificación de los genes diferencialmente expresados. Se observa que las lecturas de tipo *single-end* tienden a maximizar el número absoluto de genes identificados en la mayoría de las comparaciones. Esta tendencia se atribuye a una mayor flexibilidad en el proceso de mapeo, ya que el alineador no requiere la validación de una pareja de lectura ni la concordancia en términos de distancia y orientación. Sin embargo, esta permisividad técnica podría derivar en un aumento de mapeos ambiguos, por lo cual se postula que, aunque los datos *paired-end* arrojen una cantidad menor de DEGs, estos representan un conjunto más robusto y biológicamente confiable al estar sujetos a restricciones espaciales más estrictas.
+
+En cuanto a la comparativa entre herramientas, el algoritmo `edgeR` demuestra una sensibilidad superior cuando se utiliza en conjunto con alineadores genómicos tradicionales como `HISAT2` y `STAR`. Se hipotetiza que la naturaleza de su normalización y el enfoque de verosimilitud (LRT) permiten una detección más amplia de genes, incluyendo aquellos con conteos absolutos menores que podrían ser descartados por la mayor rigurosidad en la contracción de la dispersión de `DESeq2`. No obstante, se nota una inversión de esta tendencia al procesar datos provenientes de Salmon, donde `DESeq2` (mediante la integración con `tximport`) identifica una mayor cantidad de genes. Esto sugiere que `DESeq2` gestiona de manera más eficiente la incertidumbre inherente a la abundancia de transcriptos en el pseudoalineamiento y ofrece una normalización más equilibrada para datos de cuantificación ultrarrápida.
+
+Desde una perspectiva biológica, el predominio constante de genes sobreexpresados (con una media de $\approx 41$) frente a los subexpresados ($\approx 8$) indica un perfil de activación transcripcional en el tejido óseo durante el envejecimiento (24 vs 3 meses). La recurrencia de genes como *Acan*, *Rasd2* y diversos colágenos (*Col10a1, Col9a3*) en múltiples flujos de trabajo sugiere que el proceso de envejecimiento óseo está fuertemente vinculado a la remodelación de la matriz extracelular y a posibles respuestas del sistema inmune, dada la presencia de inmunoglobulinas en el tope de significancia de `edgeR`.
+
+Finalmente, el análisis visual mediante PCA y la inspección de los gráficos de *volcano* revelan patrones complementarios sobre la estructura de los datos. Mientras que el PCA muestra una dispersión notable y una ausencia de agrupaciones discretas perfectamente definidas entre las edades de 3 y 24 meses, lo que sugiere una homeostasis relativa en el tejido óseo maduro, el conjunto de gráficos de *volcano* permite identificar que la etapa de preprocesamiento técnico (alineación vs. pseudoalineación) ejerce una influencia más determinante sobre la topología y distribución de los datos resultantes que la elección del método estadístico final. Se observa una alta concordancia morfológica entre los gráficos generados por `HISAT2` y `STAR` dentro de sus respectivos grupos (`DESeq2` o `edgeR`), pero una divergencia marcada al contrastarlos con los perfiles derivados de `Salmon`. Esta observación subraya que, aunque existan sesgos técnicos introducidos por las herramientas de bioinformática, la consistencia observada en los heatmaps de los genes principales valida la existencia de un núcleo de marcadores biológicos que responde de manera reproducible a través de todas las metodologías evaluadas.
+
+# Conclusión
+
+El estudio permite concluir que la robustez de un análisis de expresión diferencial depende críticamente de la integración coherente entre el tipo de secuenciación, el alineador y el modelo estadístico. Se determinó que, si bien la secuenciación *single-end* maximiza la cantidad bruta de genes detectados debido a una mayor permisividad en el mapeo, la arquitectura *paired-end* proporciona una resolución superior y mayor confianza biológica al imponer restricciones espaciales que mitigan la identificación de falsos positivos derivados de regiones genómicas ambiguas.
+
+Respecto a las herramientas estadísticas, se identificó una especialización algorítmica: `edgeR` destaca por su sensibilidad en flujos de trabajo basados en alineación clásica al genoma (`HISAT2` y `STAR`), mientras que `DESeq2`, en combinación con `tximport`, demuestra ser el método más eficaz para gestionar la incertidumbre de abundancia en datos provenientes de pseudoalineadores como `Salmon`. La inspección de los gráficos de *volcano* ratifica que esta divergencia metodológica no es trivial; la morfología de la distribución de los DEGs está más influenciada por la estrategia de alineación inicial que por el modelo estadístico posterior. Esta observación subraya que no existe un método universalmente superior, sino que la elección del algoritmo debe estar sujeta a la naturaleza del procesamiento previo de las lecturas.
+
+Biológicamente, la persistencia de genes relacionados con la matriz extracelular (*Acan, Col10a1, Col9a3*) y la señalización celular (*Rasd2*) a través de múltiples metodologías confirma que se trata de cambios genuinos y robustos en el transcriptoma del tejido óseo envejecido. El predominio de la activación génica sugiere un proceso de remodelación activa durante el envejecimiento en ratones de 24 meses. Finalmente, se concluye que el uso de múltiples enfoques computacionales constituye una estrategia necesaria para validar marcadores biológicos y distinguir entre la verdadera señal biológica y el sesgo técnico introducido por las herramientas de bioinformática.
+
+# Referencias
+
+GNU Bash manual - GNU Project - Free Software Foundation. (s. f.). 
+    https://www.gnu.org/software/bash/manual/ 
+
+RNA Sequence Analysis in R: edgeR. (s. f.). 
+    https://web.stanford.edu/class/bios221/labs/rnaseq/lab_4_rnaseq.html 
+
+Tsai, J. (s. f.). DESEQ2 tutorial. 
+    https://introtogenomics.readthedocs.io/en/latest/2021.11.11.DeseqTutorial.html
