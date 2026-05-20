@@ -1,0 +1,8 @@
+"Category","Term","Count","List Total","Pop Hits","Pop Total","P-Value","Benjamini","Fold Enrichment","Bonferroni","FDR","Fisher Exact","User Ids"
+"GOTERM_BP_FAT","skeletal system development","4","7","510","17298","4.77e-4","8.68e-2","19.38","8.31e-2","8.68e-2","2.44e-5","ENSMUSG00000039084,ENSMUSG00000030607,ENSMUSG00000039462,ENSMUSG00000022025"
+"GOTERM_BP_FAT","cartilage development","3","7","191","17298","1.77e-3","1.61e-1","38.81","2.75e-1","1.61e-1","4.49e-5","ENSMUSG00000030607,ENSMUSG00000039462,ENSMUSG00000022025"
+"GOTERM_BP_FAT","connective tissue development","3","7","263","17298","3.32e-3","2.01e-1","28.19","4.54e-1","2.01e-1","1.16e-4","ENSMUSG00000030607,ENSMUSG00000039462,ENSMUSG00000022025"
+"GOTERM_BP_FAT","bone development","2","7","221","17298","7.43e-2","1.00e+0","22.36","1.00e+0","1.00e+0","3.27e-3","ENSMUSG00000039084,ENSMUSG00000039462"
+"GOTERM_BP_FAT","skeletal system morphogenesis","2","7","238","17298","7.98e-2","1.00e+0","20.77","1.00e+0","1.00e+0","3.78e-3","ENSMUSG00000030607,ENSMUSG00000039462"
+"GOTERM_BP_FAT","ossification","2","7","280","17298","9.33e-2","1.00e+0","17.65","1.00e+0","1.00e+0","5.20e-3","ENSMUSG00000008874,ENSMUSG00000039462"
+
