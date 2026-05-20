@@ -434,5 +434,8 @@ png(paste(results_files_dir, "plots/heatmap_top20.png", sep = ""),
 draw(top_20_heatmap)
 dev.off()
 
+# Guarda el RDS de res para analisis tipo GSEA/RNAAgeCalc
+saveRDS(res, file = paste(results_files_dir, "results.rds", sep = ""))
+
 # Cierra dispositivos gráficos
 graphics.off()
