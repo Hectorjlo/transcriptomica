@@ -25,7 +25,7 @@ gse <- gseGO(geneList = gene_list,
         )
 
 # Guarda el objeto RDS generado
-saveRDS(gse, file = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/gse.rds")
+saveRDS(gse, file = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/gse.rds")
 
 # Realiza el plot
 p <- gseaplot2(gse,
@@ -50,7 +50,7 @@ p[[1]] <- p[[1]] +  geom_hline( # Agrega una línea en y = 0
 )
 
 # Guarda el plot
-ggsave(filename = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/plots/GSEA_plot.png",
+ggsave(filename = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GSEA_plot.png",
     plot = p, 
     dpi = 1200, 
     width = 11.25, 
