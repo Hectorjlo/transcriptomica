@@ -1,0 +1,400 @@
+---
+title: "Análisis de anotación funcional"
+author: "Héctor Jesús López-Ordaz"
+date: "2026-05-10"
+lang: es
+
+format:
+  pdf:
+    highlight-style: breezedark
+    pdf-engine: xelatex
+    toc: true
+    mainfont: "Times New Roman"
+    fontsize: 11pt
+    include-in-header:
+      text: |
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\scriptsize}
+---
+
+
+# Planteamiento
+
+El análisis de expresión diferencial proporciona catálogos extensos de genes diferencialmente expresados (DEG) bajo distintas condiciones experimentales; sin embargo, la mera identificación estadística de estos transcritos resulta insuficiente para comprender los mecanismos biológicos subyacentes. El siguiente paso crítico en el estudio de la transcriptómica es la contextualización funcional de estos datos, un reto que requiere transitar de listas de genes individuales a la comprensión de redes de interacción y vías fisiológicas alteradas. En el contexto del tejido óseo, donde el delicado equilibrio entre la formación y la resorción determina la homeostasis del órgano, resulta imperativo comprender el impacto sistémico de las alteraciones transcripcionales.
+
+Para abordar este problema, se emplea el uso de plataformas bioinformáticas especializadas en el enriquecimiento ontológico. El uso de la base de datos DAVID del NCBI permite clasificar y cuantificar funcionalmente los DEG, destacando los Procesos Biológicos (BP) y Componentes Celulares (CC) con mayor alteración. Simultáneamente, a diferencia de los métodos dependientes de umbrales, el Análisis de Enriquecimiento de Conjuntos de Genes (GSEA) permite evaluar el transcriptoma de manera global; en el presente reporte se contrastó la dinámica entre la proliferación de osteoclastos y la regulación negativa de su diferenciación, lo cual dictamina el potencial resortivo del tejido bajo estudio.
+
+Finalmente, la herramienta STRING facilita la reconstrucción y visualización del interactoma proteico, lo que revela relaciones estructurales y nodos biológicos centrales entre los DEG identificados. 
+
+# Objetivos
+## Objetivo general
+
+Caracterizar funcionalmente el conjunto de DEG mediante análisis ontológicos, reconstrucción de redes de interacción proteica y análisis de enriquecimiento de conjuntos de genes, con el fin de dilucidar los mecanismos moleculares que modulan la dinámica celular y la homeostasis del tejido óseo.
+
+## Objetivos específicos
+
+- Clasificar y evaluar el nivel de enriquecimiento de las categorías de Procesos Biológicos y Componentes Celulares de los DEG utilizando la plataforma DAVID, identificando las funciones celulares y compartimentos subcelulares predominantemente alterados.
+
+- Ejecutar un análisis de GSEA para evaluar el perfil transcripcional global, contrastando directamente la magnitud de enriquecimiento de la vía de proliferación de osteoclastos frente a la vía de regulación negativa de la diferenciación de osteoclastos, para inferir el balance de la actividad resortiva.
+
+- Construir y analizar la red de interacción proteína-proteína (PPI) de los productos génicos desregulados a través de STRING, para identificar los nodos centrales o "hubs" biológicos que dirigen la respuesta fisiológica.
+
+# Metodología y Justificación
+
+## 1. Elección de set de datos
+
+Para este reporte se seleccionó el set de datos resultantes del uso de `DESeq2`, con el alineador de `STAR` y lecturas *paired end*.
+
+La selección del conjunto de datos se fundamentó en el procesamiento de lecturas *paired end*, debido a que esta metodología permite integrar las restricciones espaciales de distancia entre pares, lo cual incrementa significativamente la robustez y la precisión de los alineamientos en comparación con las lecturas de extremo único. Para la fase de mapeo, se optó por el alineador `STAR`, fundamentado en resultados previos donde demostró una eficacia superior al minimizar las lecturas no mapeadas y mantener una tasa de alineamiento consistentemente elevada bajo las condiciones del estudio. Finalmente, se empleó la herramienta `DESeq2` para el análisis de expresión diferencial, dado que este algoritmo demostró mayor sensibilidad para identificar un catálogo de genes diferencialmente expresados (DEG) con diversidad funcional, evitando el sesgo exclusivo hacia familias de inmunoglobulinas observado en `edgeR` y garantizando así una representación más equilibrada del perfil transcriptómico.
+
+## 2. Creación de la estructura del proyecto
+
+La implementación de una estructura de directorios estandarizada constituye un pilar fundamental para la reproducibilidad y la escalabilidad del flujo de trabajo bioinformático. Esta organización modular no solo optimiza la gestión de rutas en los scripts, sino que también asegura que el proyecto sea auditable y reutilizable siguiendo los principios FAIR (Findable, Accessible, Interoperable, Reusable). Para continuar entonces con la organización previa del proyecto se creó la sigueinte estrutura.
+
+```bash
+cd /home/hectorjl/4to/transcriptomica
+cd DE_analysis
+mkdir -p data/DAVID_files
+mkdir -p results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/{img,plots}
+``` 
+
+## 3. Preparación de los datos
+
+Se decidió realizar una preparación de los datos para que estos se encontraran en el formato requerido para los próximos pasos, este proceso fué realizado usando `bash`.
+
+Se obtuvo únicamente los ENSEMBL IDs en un archivo de columna única provinientes de los archivos de *upregulated genes*, *downregulated genes* y genes después del filtrado por expresión, este último fué usado como archivo de *background*, usando `awk`:
+
+```bash
+for file in results/{hisat2,star,salmon}/DE_analysis/{DESeq2,edgeR}/{paired_end,single_end}/*-*.txt; do
+name=$(basename $file)
+output_path="${file%/$name}"
+output_name="${name%.txt}"
+output_name="${output_name%%0.[0-9]}_Ensembl_IDs.txt"
+
+awk 'NR > 1 {sub(/\.+[0-9]/, "", $1); print $1}' $file > $output_path/$output_name
+done
+```
+
+Esto realizó la preparación para la totalidad de los resultados, pero solo los datos previamente elegidos fueron usados.
+
+## 4. Anotación funcional por `DAVID`
+
+La anotación funcional fue ejecutada mediante la plataforma `DAVID` (Database for Annotation, Visualization and Integrated Discovery), seleccionada por ser una herramienta de referencia altamente curada y extensamente utilizada en la literatura científica. El proceso, realizado a través de su interfaz de análisis [(davidbioinformatics.nih.gov)](https://davidbioinformatics.nih.gov/workspace.html?tool=summary_ws), permite integrar información de múltiples bases de datos para identificar con precisión los procesos biológicos y componentes celulares más relevantes asociados a los genes diferencialmente expresados y facilitando la descarga de los datos en formatos óptimos para su gráficación.
+
+### 4.1 Carga de archivo de *background*
+Se accedió a la interfaz, se cargó el archivo de *background* como se observa en la sigueinte imágen:
+#! FIXED https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/
+
+![Carga de background](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/img/bg.jpg)
+
+Se seleccionó y dió click en *Use*
+
+### 4.2 Carga de listas de DEGs
+
+En la misma interfaz, se cargó en el apartado *List* los archivos de DEGs tanto *up* como *downregulated*, como se observa a continuación:
+
+![Carga de downregulated](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/img/list_up_down.jpg)
+
+Se dió click en *Use* dependiendo de que lista se quería usar para el análisis 
+
+### 4.3 Descarga de *Functional Annotation Chart*
+
+Para cada lista, se descargó desde la sección **Gene_Ontology** a "*GOTERM BP DIRECT*" y a "*GOTERM CC DIRECT*" usando el boton de *chart* de esa línea y descargando los datos en formato `csv`, estos archivos fueron guardados en `data/DAVID_files`
+
+Se seleccionaron exclusivamente las categorías de Biological Process (BP) y Cellular Component (CC) para realizar el análisis de enriquecimiento, debido a que proporcionan un nivel de abstracción ideal para interpretar el impacto fisiológico global de los DEG. Mientras que BP permite identificar las vías y procesos biológicos coordinados que están siendo modulados, CC ofrece información crítica sobre la localización subcelular y los compartimentos donde se manifiestan estos cambios. En conjunto, ambas ontologías facilitan la comprensión del efecto sistémico de la expresión diferencial en el tejido óseo. Como nota, se decidió omitir la categoría de Molecular Function (MF) dado que su enfoque en actividades bioquímicas específicas resulta excesivamente granular para los objetivos del estudio, aportando una información similar a la de los genes individuales sin ofrecer la contextualización funcional a gran escala que brindan BP y CC.
+
+## 5. Graficación de enriquecimiento
+
+Se decidió graficar los datos obtenidos del paso anterior, ya que para la interpretación la ayuda visual es altamente informativa. Para esto se creó un script pequeño en `R`:
+
+```R
+# Carga las librerías necesarias
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Carga los datos de DAVID
+david_data <- read_delim(
+    "DE_analysis/data/DAVID_files/DAVIDChartReport_upregulated_CC.csv",
+    delim = ","
+)
+
+# Limpiar y preparar los datos
+# Vamos a ordenar por P-Value y quedarnos solo con los primeros 15
+datos_plot <- david_data %>%
+    arrange("P-Value") %>% # Ordenar de menor a mayor P-value
+    head(15) %>% # Tomar el top 15
+    mutate(Term = gsub("^GO:[0-9]+~", "", Term)) # Limpiar el nombre del término GO 
+
+# Genera el Bubble Plot
+grafico_burbujas <- ggplot(
+    datos_plot,
+    aes(x = `Fold Enrichment`, y = reorder(Term, `Fold Enrichment`))
+    ) +
+    # Crear las burbujas, tamaño por conteo de genes, color por P-Value
+    geom_point(aes(size = Count, color = `P-Value`), alpha = 0.8) +
+    scale_color_gradient(low = "red", # Rojo para P-values bajos
+                        high = "blue") + # Azul para altos
+    theme_bw() +
+    labs(
+        title = "Enriquecimiento de Gene Ontology (Upregulated - CC)",
+        x = "Fold Enrichment",
+        y = NULL,
+        size = "Número de Genes",
+        color = "P-value"
+    ) +
+    theme(
+        axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.x = element_text(size = 11, color = "black"),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 14)
+    )
+
+# Guarda el gráfico
+ggsave(
+    "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_upregulated_CC.png",
+    plot = grafico_burbujas,
+    width = 11.25,
+    height = 7.5,
+    dpi = 600
+)
+```
+
+Modificando ligeramente el código fuente, fueron generadas las gráficas de burbujas para visualizar el enriquecimiento.
+
+## 6. Visualización de PPI con STRING
+
+Se empleó la plataforma `STRING` para reconstruir y analizar las redes de interacción proteína-proteína (PPI), con el objetivo de identificar la organización funcional y los nodos centrales ("hubs") que integran la respuesta biológica de los DEG. El análisis se ejecutó de forma independiente para las listas de genes sobreexpresados (*up*), subexpresados (*down*) y el conjunto integrado (*up+down*), lo que permitió visualizar la formación de posibles complejos proteicos y rutas de señalización coordinadas. Las representaciones gráficas del interactoma fueron exportadas y almacenadas en el directorio de resultados funcionales para su posterior interpretación estructural y biológica.
+
+## 7. Análisis de *Gene set enrichment analysis* (GSEA)
+
+Se llevó a cabo un Análisis de Enriquecimiento de Conjuntos de Genes (GSEA) con el propósito de validar y profundizar en las rutas biológicas alteradas, evaluando el perfil transcriptómico de manera global y sin depender de umbrales de significancia estadísticos rígidos. El análisis se centró en contrastar específicamente la magnitud del enriquecimiento entre la vía de proliferación de osteoclastos y la vía de regulación negativa de su diferenciación, permitiendo así discernir el equilibrio dinámico y la interacción funcional entre las señales que promueven o inhiben la actividad resortiva en el tejido óseo.
+
+Para ello, se generó el siguiente script en `R`:
+
+```R
+# Carga librerías necesarias
+library(DESeq2)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+
+# Carga el objeto RDS generado del análisis diferencial
+res <- readRDS(file = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/results.rds")
+
+# Ordena de manera inversa por stat
+res <- res[order(-res$stat), ]
+
+# Crea la lista de genes
+gene_list <- res$stat
+# Renombra el vector igual que los nombres de los genes del objeto RDS
+names(gene_list) <- rownames(res) 
+
+# Realiza el análisis de GSE
+gse <- gseGO(geneList = gene_list,
+            ont = "BP", # Agrega la ontología "Biological Process"
+            keyType = "ENSEMBL", # Formato ENSEMBL ID
+            OrgDb = "org.Mm.eg.db", # Base de datos de ratón
+            eps = 1e-300 # No trunca el P-value hasta 1e-300
+        )
+
+# Guarda el objeto RDS generado
+saveRDS(gse, file = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/gse.rds")
+
+# Realiza el plot
+p <- gseaplot2(gse,
+               geneSetID = c(grep(
+                "osteoclast proliferation", 
+                as.data.frame(gse)$Description
+                ), # Busca a ese patrón retorna el índice
+                grep("negative regulation of osteoclast differentiation", 
+                as.data.frame(gse)$Description)
+                ),
+               title = "",
+               base_size = 14,
+               pvalue_table = TRUE, # Muestra la tabla de P-value
+               pvalue_table_columns = c("NES", "p.adjust") # Agrega el valor NES
+            )
+
+p[[1]] <- p[[1]] +  geom_hline( # Agrega una línea en y = 0
+    yintercept = 0, 
+    linetype = "solid", 
+    color = "grey40", 
+    linewidth = 0.5
+)
+
+# Guarda el plot
+ggsave(filename = "DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GSEA_plot.png",
+    plot = p, 
+    dpi = 1200, 
+    width = 11.25, 
+    height = 7.5,
+    create.dir = TRUE
+)
+
+```
+
+De igual manera el gráfico generado se guardó en la misma carpeta de los pasos anteriores.
+
+## 8. Intento de `RNAAgeCalc`
+
+Se exploró la implementación de la librería `RNAAgeCalc` con el propósito de estimar la edad cronológica de las muestras a partir de las matrices de conteos transcripcionales. No obstante, tras la revisión de la documentación técnica, se constató que los algoritmos de predicción y los conjuntos de entrenamiento de esta herramienta están diseñados exclusivamente para datos provenientes de humanos (*Homo sapiens*). Dado que el presente estudio se fundamenta en un modelo de ratón (*Mus musculus*), se determinó que el uso de dicha librería no resultaba viable para este flujo de trabajo, por lo que el análisis fue desestimado para asegurar la coherencia taxonómica de los resultados.
+
+# Resultados
+
+## Interpretación de gráficos de *Gene ontology*
+
+::: {layout="[1,1]"}
+![GO Upregulated BP](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_upregulated_BP.png)
+
+![GO Downregulated BP](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_downregulated_BP.png)
+:::
+
+### Procesos Biológicos Sobreexpresados (Upregulated - BP)
+
+- Hiperactividad inmunológica y respuesta humoral: Se observa incremento notable en las vías de "respuesta inmune humoral mediada por inmunoglobulinas circulantes" y "respuesta inmune mediada por inmunoglobulinas".
+
+- Activación del complemento y respuesta adaptativa: Otras vías altamente significativas incluyen la "activación del complemento (vía clásica)" y la "respuesta inmune adaptativa". Una proporción sustancial de los 36 genes *up regulated* está participando en estas cascadas.
+
+Este perfil fenotípico sugiere fuertemente la presencia de *inflammaging*. Una desregulación del sistema inmunológico que resulta en la sobreproducción de autoanticuerpos lo que desencadena una respuesta inflamatoria persistente, lo cual concuerda con el aumento de la transcripción de estas vías.
+
+### Procesos Biológicos Subexpresados (Downregulated - BP)
+
+- Deterioro del tejido conectivo y esquelético: Los procesos más significativos y con mayor enriquecimiento corresponden al "desarrollo del cartílago" (*cartilage development*), "desarrollo del tejido conectivo" (*connective tissue development*) y "desarrollo del sistema esquelético" (*skeletal system development*).
+- Disminución de la morfogénesis: Categorías como "osificación" y "morfogénesis del sistema esquelético" aparecen representadas, pero con menor significancia estadística.
+
+La represión de estos procesos biológicos indica pérdida de la capacidad regenerativa y de mantenimiento tisular posiblemente debido a edad avanzada. La disminución en la expresión de genes asociados al cartílago y al tejido conectivo es una firma molecular típica de la senescencia celular y del envejecimiento del sistema locomotor, lo que a nivel fisiológico se traduce en una menor densidad ósea, pérdida de flexibilidad y deterioro de las articulaciones.
+
+El contraste del perfil BP entre ambos gráficos refleja un modelo clásico de envejecimiento de los mamíferos que ilustra una pérdida en las funciones de mantenimiento estructural y regeneración de tejidos (cartílago/hueso) acompañada de una exacerbación y desregulación de las respuestas inmunitarias e inflamatorias.
+
+### Componentes Celulares Sobreexpresados (Upregulated - CC)
+
+- Dominancia de los complejos de inmunoglobulinas: El análisis muestra un enriquecimiento extraordinariamente alto (con un *Fold Enrichment* cercano a 250) para el "complejo de inmunoglobulina circulante" (*immunoglobulin complex, circulating*), seguido de los complejos específicos de IgG e IgM. Esto indica que los genes regulados al alza no solo pertenecen al sistema inmune, sino que codifican específicamente para anticuerpos secretados.
+- Inundación del espacio extracelular: Las categorías de "región extracelular" (*extracellular region*) y "espacio extracelular" agrupan a una gran cantidad de estos genes.
+
+Este perfil corrobora el fenotipo de hiperactividad humoral sugerido en los procesos biológicos. El espacio extracelular y el torrente sanguíneo están experimentando una alta carga de complejos de inmunoglobulinas. Esto es una marca característica de la senescencia del sistema inmune.
+
+### Componentes Celulares Subexpresados (Downregulated - CC)
+
+- Deterioro de la matriz y el colágeno: Las vías más significativas y con mayor nivel de enriquecimiento corresponden al "trímero de colágeno" (*collagen trimer*), la "matriz extracelular" (*extracellular matrix*) y la "membrana basal" (*basement membrane*).
+- Contraste en la región extracelular: Es muy interesante notar que la "región extracelular" también aparece en este gráfico con un número importante de genes. Sin embargo, mientras que los genes *sobreexpresados* en esta región son anticuerpos, los genes *subexpresados* en esta misma región son proteínas estructurales.
+
+A nivel topológico, el organismo envejecido muestra una disminución en la síntesis de los componentes fundamentales del andamiaje tisular. La caída en la expresión de colágeno y proteínas de la matriz extracelular y la membrana basal explica a nivel celular el deterioro del cartílago y del hueso observado en los BP. Esto se traduce en una pérdida progresiva de la integridad física, elasticidad y capacidad de reparación de los tejidos conectivos.
+
+
+### Conclusión 
+
+Al unir los análisis de Procesos Biológicos y Componentes Celulares, el panorama transcriptómico revela un fenotipo de envejecimiento clásico caracterizado por un cambio en el espacio extracelular:
+
+1. Pérdida de estructura: Se apaga la producción de proteínas estructurales (colágeno, matriz extracelular) necesarias para mantener el cartílago, el hueso y el tejido conectivo.
+
+2. Invasión inmunológica: Ese mismo espacio extracelular se ve inundado por una sobreproducción de complejos de inmunoglobulinas circulantes, reflejando un estado de inflamación crónica o desregulación inmunitaria (inflammaging).
+
+## Interpretación de GSEA
+
+![GSEA](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GSEA_plot.png)
+
+Con GSEA se proporciona una visión dinámica de cómo se comportan grupos enteros de genes funcionales, confirmando y expandiendo los hallazgos previos sobre el deterioro óseo.
+
+En este gráfico, se evalúan dos vías relacionadas con los osteoclastos (las células responsables de la reabsorción y degradación del tejido óseo). La topología de ambas curvas indica que estos procesos están significativamente alterados durante el envejecimiento.
+
+A continuación, se detalla la interpretación de la gráfica:
+
+### Análisis Topológico del GSEA
+
+- Enriquecimiento Positivo: Ambas curvas muestran un pico máximo en la parte superior izquierda del gráfico, correspondiente a métricas de lista de clasificación (*Ranked List Metric*) positivas.
+- Significado: Esto indica que los genes principales (*leading edge*) que impulsan estas dos vías se encuentran en la cima de la lista de genes diferencialmente expresados; es decir, ambos procesos están *upregulated*.
+- Distribución de Genes (Código de Barras): Las líneas verticales en el panel central confirman que una alta densidad de genes asociados a estas vías se agrupa en el extremo izquierdo de la clasificación.
+
+### Interpretación Biológica por Vía
+
+#### Proliferación de Osteoclastos (*osteoclast proliferation* - Curva Roja)
+
+- Estadística: Muestra un Enriquecimiento Normalizado (NES) muy alto de 1.832 y es altamente significativa (p.adjust < 0.01).
+
+- Implicación Biológica: El aumento drástico en las señales de proliferación de osteoclastos implica que el organismo envejecido está reclutando y multiplicando activamente las células que destruyen el hueso. Esto concuerda perfectamente con la ontología reprimida vista anteriormente, donde la formación de hueso, cartílago y colágeno estaba disminuida. El balance de remodelación ósea se inclina fuertemente hacia la resorción.
+
+- Conexión Inmunológica: Los osteoclastos provienen del mismo linaje celular que los macrófagos. El estado inflamatorio crónico (*inflammaging*) observado en los procesos biológicos sobreexpresados es un potente estimulador de la proliferación de osteoclastos.
+
+#### Regulación Negativa de la Diferenciación de Osteoclastos (*negative regulation of osteoclast differentiation* - Curva Turquesa)
+
+- Estadística: Muestra un NES de 1.6 y también es estadísticamente significativa (p.adjust < 0.05).
+
+- Implicación Biológica: A primera vista, parece paradójico que se sobreexprese la "regulación negativa de la diferenciación" al mismo tiempo que la proliferación. Sin embargo, biológicamente refleja dos escenarios probables de un sistema desregulado:
+
+**Bucle de Retroalimentación Compensatoria:** El tejido óseo, al detectar una tasa destructiva de proliferación y actividad osteoclástica, activa señales de emergencia para frenar la maduración (diferenciación) de nuevos osteoclastos en un intento fallido de detener la pérdida ósea.
+
+**Estancamiento de Progenitores:** Las células precursoras se están multiplicando rápidamente, pero su proceso normal de maduración está bloqueado o desregulado, acumulando células en estados inmaduros o alterados dentro del microambiente óseo.
+
+### Conclusión
+
+La integración de este GSEA con los análisis de Gene Ontology dibuja un mecanismo molecular claro para el envejecimiento esquelético en el modelo *M. musculus*: el ambiente extracelular inflamatorio promueve una sobreactivación en la multiplicación de células destructoras de hueso (osteoclastos), mientras que los mecanismos celulares intentan compensar bloqueando su diferenciación. Todo esto ocurre simultáneamente con el apagón de las vías encargadas de sintetizar nueva matriz estructural y colágeno, resultando en el clásico fenotipo de fragilidad y pérdida de densidad ósea asociado a la edad avanzada.
+
+## Interpretación de STRING
+
+::: {layout="[1,1,1]"}
+![STRING downregulated PPI](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_downregulated.png)
+
+![STRING upregulated PPI](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_upregulated.png)
+
+![STRING DEGs PPI](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_DEG.png)
+:::
+
+El análisis del interactoma de proteínas a través de la base de datos STRING permite visualizar la topología de las interacciones físicas y funcionales entre los productos de los genes diferencialmente expresados (DEG). La evaluación de estas redes confirma y profundiza los hallazgos biológicos previamente descritos sobre el envejecimiento esquelético e inmunológico.
+
+### Red de Proteínas Subexpresadas (Downregulated - Clúster Estructural)
+
+Al observar la imagen exclusiva de las proteínas reprimidas (nodos rojos), el análisis revela un cluster funcional altamente interconectado.
+
+- Núcleo de la Matriz Extracelular: Se aprecia una fuerte red de interacciones entre colágenos (*Col10a1*, *Col9a3*), el agrecano (*Acan*) y proteínas asociadas al cartílago (*Chad*, *Cnmd*). Estas proteínas no actúan de manera aislada; físicamente ensamblan la estructura tridimensional del cartílago y la matriz extracelular ósea.
+
+- Interpretación Biológica: La topología de este clúster indica que el envejecimiento no apaga genes estructurales al azar, sino que desarticula un complejo macromolecular completo. La alta conectividad demuestra que la pérdida de expresión génica afecta a toda una maquinaria fisiológica, lo que explica la severidad del deterioro esquelético y articular.
+
+
+### Red de Proteínas Sobreexpresadas (Upregulated - Nodos Dispersos)
+
+En marcado contraste, la red de proteínas inducidas muestra una arquitectura topológica aislada y dispersa.
+
+- Efectores Independientes: La gran mayoría de los nodos (*Prkag3*, *Pla2g2d*, *Dusp13*, etc.) no presentan interacciones físicas validadas entre sí dentro de este conjunto específico.
+
+- Eje de Quimiocinas: La única interacción directa y fuerte se observa entre *Cxcl13* y *Ccl8*, ambas quimiocinas fundamentales para el reclutamiento de leucocitos y la modulación de la respuesta inflamatoria.
+
+- Interpretación Biológica: La falta de un clúster interconectado sugiere que estas proteínas no forman un complejo físico o estructural conjunto. En su lugar, actúan como efectores secretados o metabólicos independientes que responden en paralelo a una misma señal de estrés sistémico. El vínculo Cxcl13-Ccl8 reafirma el estado de *inflammaging*, indicando una señalización activa para atraer células del sistema inmunológico hacia los tejidos periféricos.
+
+### Red Combinada - Interactoma Global
+
+Al integrar todas las proteínas en una sola red, el hallazgo más destacable es la ausencia de interacción física directa entre el bloque estructural reprimido (cartílago/matriz) y el bloque proinflamatorio sobreexpresado.
+
+Esta desconexión en el interactoma indica que la inflamación y la degradación estructural son respuestas paralelas fuertemente marcadas, pero no se regulan físicamente entre sí a través de estas proteínas finales. Sugiere que la comunicación biológica entre el daño del tejido conectivo y la hiperactividad inmunológica está orquestada por reguladores "aguas arriba" (factores de transcripción o citocinas pleiotrópicas) que no aparecen en este filtro tan estricto de genes diferencialmente expresados, o bien que su interacción ocurre a nivel celular y no mediante el contacto directo de estas proteínas.
+
+# Discusión
+
+Desde la perspectiva de Ontología de Genes, se observa que los términos sobreexpresados agrupan predominantemente componentes y procesos relacionados con inmunoglobulinas y la actividad humoral, mientras que los términos subexpresados se relacionan con colágenos, matriz extracelular y morfogénesis esquelética. Esta dualidad topológica indica que el microambiente tisular está siendo remodelado de manera bipartita: por un lado, la zona extracelular se ve saturada por productos secretados del sistema inmunitario; por otro, se reduce la capacidad biosintética para mantener la arquitectura del tejido conectivo. Biológicamente, esto concuerda con un estado de *inflammaging* que favorece la degradación tisular y compromete la homeostasis estructural del hueso.
+
+El GSEA aporta una visión complementaria y global: tanto la vía de proliferación de osteoclastos como la de regulación negativa de la diferenciación de osteoclastos aparecen enriquecidas y con NES positivos. Esta combinación se interpreta como un desequilibrio dinámico en el compartimento osteoclástico, donde aumenta la proliferación de precursores o células inmaduras mientras coexisten señales que intentan frenar su maduración. Desde un punto de vista funcional, esto sugiere un aumento en la fuerza proliferativa de poblaciones osteoclásticas acompañado por mecanismos compensatorios de control de diferenciación, una situación que, en conjunto, puede conducir a una mayor actividad reabsortiva efectiva o a la acumulación de progenitores disfuncionales.
+
+El análisis de interactoma mediante STRING refuerza la interpretación anterior al mostrar dos arquitecturas contrastantes: un clúster altamente conectado de proteínas estructurales reprimidas y una agrupación dispersa de proteínas sobreexpresadas, mayoritariamente efectores solubles y quimiocinas. La desconexión entre el bloque estructural y el bloque proinflamatorio en la red combinada sugiere que la comunicación causal entre pérdida de matriz y activación inmune se media probablemente por reguladores transcripcionales, citocinas o señales paracrinas no capturadas directamente por los DEG filtrados, o bien por cambios celulares a nivel del microambiente que exceden la resolución del análisis PPI restringido a productos génicos finales.
+
+En conjunto, los resultados ofrecen un mecanismo coherente: la inflamación crónica sistémica o local promueve un entorno que favorece la proliferación osteoclástica y la pérdida de componentes de la matriz, mientras que mecanismos regulatorios intentan limitar la diferenciación de nuevas unidades reabsortivas. Este balance disfuncional explica el fenotipo observado de pérdida de integridad tisular y refuerza la hipótesis de que el envejecimiento del tejido óseo está impulsado por la interacción entre respuesta inmune exacerbada y declive en la síntesis de matriz.
+
+Se deben considerar limitaciones metodológicas importantes: el análisis se basa en DEG derivados de un umbral y filtrado específicos, lo que puede excluir reguladores de baja expresión pero de alto impacto; las anotaciones dependen de mapeos ENSEMBL y de bases de datos (DAVID, org.Mm.eg.db) que pueden no capturar todas las relaciones contexto-específicas; y la inferencia PPI en STRING se apoya en interacciones reportadas que no siempre representan conexiones funcionales en el tejido óseo analizado. Además, la interpretación causal entre inflamación y degradación de matriz requiere validación experimental para confirmar la dirección y la magnitud de los efectos sugeridos.
+
+En síntesis, el presente reporte describe un estado transcriptómico compatible con un proceso de envejecimiento esquelético caracterizado por una invasión funcional del espacio extracelular por productos inmunitarios y por la reducción simultánea de los programas génicos responsables del mantenimiento estructural. Estos hallazgos proporcionan hipótesis mecanísticas que justifican estudios experimentales posteriores orientados a desentrañar los reguladores moleculares que articulan la comunicación entre inflamación y pérdida de integridad tisular en el hueso.
+
+# Conclusión
+
+El presente trabajo muestró que el perfil transcriptómico analizado evidencia un acoplamiento claro entre una respuesta inmune humoral exacerbada y el declive de programas génicos responsables de la matriz extracelular y del desarrollo esquelético. Los análisis ontológicos y de enriquecimiento (DAVID, GSEA) apuntan a una sobreactivación de vías relacionadas con inmunoglobulinas y a un aumento en la proliferación osteoclástica con señales concomitantes que inhiben la diferenciación madura, lo que sugiere acumulación de progenitores osteoclásticos y un desplazamiento del balance hacia la resorción ósea. La reconstrucción del interactoma (STRING) revela un clúster estructural interconectado de proteínas reprimidas y un conjunto disperso de efectores inflamatorios, indicando que la conexión funcional entre pérdida de matriz e inflamación probablemente esté mediada por reguladores transcripcionales o señales paracrinas no capturadas directamente por los DEG filtrados.
+
+Estos resultados sustentan la hipótesis de que el envejecimiento esquelético observado en el modelo estudiado es impulsado por un estado de *inflammaging* que favorece la degradación tisular y limita la capacidad de mantenimiento estructural. Se reconocen limitaciones derivadas de umbrales de filtrado, dependencias de anotaciones y la naturaleza reportada de las interacciones PPI. 
+
+# Referencias
+
+Drake, M. T., Clarke, B. L., & Lewiecki, E. M. (2015). The Pathophysiology and Treatment of Osteoporosis. Clinical Therapeutics, 37(8), 1837-1850. https://doi.org/10.1016/j.clinthera.2015.06.006 
+
+Getting started - STRING Help. (s. f.). https://string-db.org/help/getting_started/ 
+
+GSEA-MSIGDB documentation. (s. f.). https://docs.gsea-msigdb.org/#GSEA/GSEA_User_Guide/ 
+
+Sherman, B. T., Hao, M., Qiu, J., Jiao, X., Baseler, M. W., Lane, H. C., Imamichi, T., & Chang, W. (2022). DAVID: a web server for functional enrichment analysis and functional annotation of gene lists (2021 update). Nucleic Acids Research, 50(W1), W216-W221. https://doi.org/10.1093/nar/gkac194 Yu, G. (s. f.). 13  
+
+Visualization of functional enrichment result – Biomedical Knowledge Mining using GOSemSim and clusterProfiler. https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html
