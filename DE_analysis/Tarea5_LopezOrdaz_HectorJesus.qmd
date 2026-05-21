@@ -15,6 +15,11 @@ format:
       text: |
         \usepackage{fvextra}
         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\scriptsize}
+    geometry:
+      - top=20mm
+      - bottom=20mm
+      - left=25mm
+      - right=25mm
 ---
 
 
@@ -83,9 +88,10 @@ La anotación funcional fue ejecutada mediante la plataforma `DAVID` (Database f
 
 ### 4.1 Carga de archivo de *background*
 Se accedió a la interfaz, se cargó el archivo de *background* como se observa en la sigueinte imágen:
-#! FIXED https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/
 
-![Carga de background](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/img/bg.jpg)
+::: {layout="[1]"}
+![Carga de background](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/img/bg.jpg)
+:::
 
 Se seleccionó y dió click en *Use*
 
@@ -93,7 +99,9 @@ Se seleccionó y dió click en *Use*
 
 En la misma interfaz, se cargó en el apartado *List* los archivos de DEGs tanto *up* como *downregulated*, como se observa a continuación:
 
-![Carga de downregulated](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/img/list_up_down.jpg)
+::: {layout="[1]"}
+![Carga de downregulated](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/img/list_up_down.jpg)
+:::
 
 Se dió click en *Use* dependiendo de que lista se quería usar para el análisis 
 
@@ -245,9 +253,9 @@ Se exploró la implementación de la librería `RNAAgeCalc` con el propósito de
 ## Interpretación de gráficos de *Gene ontology*
 
 ::: {layout="[1,1]"}
-![GO Upregulated BP](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_upregulated_BP.png)
+![GO Upregulated BP](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_upregulated_BP.png)
 
-![GO Downregulated BP](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_downregulated_BP.png)
+![GO Downregulated BP](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_downregulated_BP.png)
 :::
 
 ### Procesos Biológicos Sobreexpresados (Upregulated - BP)
@@ -266,6 +274,12 @@ Este perfil fenotípico sugiere fuertemente la presencia de *inflammaging*. Una 
 La represión de estos procesos biológicos indica pérdida de la capacidad regenerativa y de mantenimiento tisular posiblemente debido a edad avanzada. La disminución en la expresión de genes asociados al cartílago y al tejido conectivo es una firma molecular típica de la senescencia celular y del envejecimiento del sistema locomotor, lo que a nivel fisiológico se traduce en una menor densidad ósea, pérdida de flexibilidad y deterioro de las articulaciones.
 
 El contraste del perfil BP entre ambos gráficos refleja un modelo clásico de envejecimiento de los mamíferos que ilustra una pérdida en las funciones de mantenimiento estructural y regeneración de tejidos (cartílago/hueso) acompañada de una exacerbación y desregulación de las respuestas inmunitarias e inflamatorias.
+
+::: {layout="[1,1]"}
+![GO Upregulated CC](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_upregulated_CC.png)
+
+![GO Downregulated CC](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GO_Bubble_Plot_downregulated_CC.png)
+:::
 
 ### Componentes Celulares Sobreexpresados (Upregulated - CC)
 
@@ -292,7 +306,7 @@ Al unir los análisis de Procesos Biológicos y Componentes Celulares, el panora
 
 ## Interpretación de GSEA
 
-![GSEA](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GSEA_plot.png)
+![GSEA](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/GSEA_plot.png)
 
 Con GSEA se proporciona una visión dinámica de cómo se comportan grupos enteros de genes funcionales, confirmando y expandiendo los hallazgos previos sobre el deterioro óseo.
 
@@ -333,11 +347,11 @@ La integración de este GSEA con los análisis de Gene Ontology dibuja un mecani
 ## Interpretación de STRING
 
 ::: {layout="[1,1,1]"}
-![STRING downregulated PPI](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_downregulated.png)
+![STRING downregulated PPI](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_downregulated.png)
 
-![STRING upregulated PPI](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_upregulated.png)
+![STRING upregulated PPI](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_upregulated.png)
 
-![STRING DEGs PPI](/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_DEG.png)
+![STRING DEGs PPI](https://raw.githubusercontent.com/Hectorjlo/transcriptomica/refs/heads/main/DE_analysis/results/star/DE_analysis/DESeq2/paired_end/Functional_analysis/plots/STRING_DEG.png)
 :::
 
 El análisis del interactoma de proteínas a través de la base de datos STRING permite visualizar la topología de las interacciones físicas y funcionales entre los productos de los genes diferencialmente expresados (DEG). La evaluación de estas redes confirma y profundiza los hallazgos biológicos previamente descritos sobre el envejecimiento esquelético e inmunológico.
